@@ -144,6 +144,77 @@
         font-size: 12px;
       }
 
+      .deposit-card {
+        display: grid;
+        gap: 18px;
+      }
+
+      .deposit-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .deposit-title {
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      .deposit-input {
+        display: grid;
+        gap: 8px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .deposit-input input {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(12, 14, 28, 0.6);
+        color: var(--text);
+        font-family: inherit;
+        font-size: 15px;
+      }
+
+      .split-labels {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .token-rows {
+        display: grid;
+        gap: 12px;
+      }
+
+      .token-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 12px;
+        border-radius: 10px;
+        background: rgba(12, 14, 28, 0.5);
+        border: 1px solid rgba(124, 140, 255, 0.15);
+      }
+
+      .token-row span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .token-value {
+        text-align: right;
+      }
+
+      .token-value strong {
+        display: block;
+        color: var(--text);
+        font-size: 14px;
+      }
+
       .chart-meta .lock {
         display: inline-flex;
         align-items: center;
@@ -242,65 +313,28 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script type="text/babel">
-      const { useEffect, useMemo, useState } = React;
+      const { useEffect, useMemo, useRef, useState } = React;
 
       const REQUEST = {
         poolId: 572,
+        poolAddress: "0x4e68ccd3e89f51c3074ca5072bbac773960dfa36",
+        rede: "ethereum",
         snapshotDate: "2025-12-24",
         currentTick: 0,
         tickRange: 6000,
       };
 
-      function LiquidityChart() {
-        const [apiData, setApiData] = useState(null);
-        const [error, setError] = useState("");
-        const [loading, setLoading] = useState(false);
+      function LiquidityChart({
+        apiData,
+        loading,
+        error,
+        rangeMin,
+        rangeMax,
+        setRangeMin,
+        setRangeMax,
+        onApply,
+      }) {
         const [hoverIndex, setHoverIndex] = useState(null);
-        const [rangeMin, setRangeMin] = useState("2833.5");
-        const [rangeMax, setRangeMax] = useState("3242.4");
-
-        const apiUrl = "http://localhost:8000/api/liquidity-distribution";
-        const token = "dev-token";
-
-        const fetchFromApi = async () => {
-          setLoading(true);
-          setError("");
-          try {
-            const parsedMin = Number(rangeMin);
-            const parsedMax = Number(rangeMax);
-            const payload = {
-              pool_id: REQUEST.poolId,
-              snapshot_date: REQUEST.snapshotDate,
-              current_tick: REQUEST.currentTick,
-              tick_range: REQUEST.tickRange,
-              range_min: Number.isFinite(parsedMin) ? parsedMin : null,
-              range_max: Number.isFinite(parsedMax) ? parsedMax : null,
-            };
-            const response = await fetch(apiUrl, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify(payload),
-            });
-            if (!response.ok) {
-              const message = await response.text();
-              throw new Error(message || "API error");
-            }
-            const data = await response.json();
-            setApiData(data);
-          } catch (err) {
-            setError(err.message || "Failed to load data.");
-            setApiData(null);
-          } finally {
-            setLoading(false);
-          }
-        };
-
-        useEffect(() => {
-          fetchFromApi();
-        }, []);
 
         const points = useMemo(() => {
           if (!apiData?.data?.length) return [];
@@ -345,6 +379,7 @@
         const maxLiquidity = points.length
           ? Math.max(...points.map((point) => point.liquidityValue))
           : 0;
+        const displayPrice = hoverPoint ? hoverPoint.price : 0;
 
         const width = 820;
         const height = 260;
@@ -393,7 +428,7 @@
                         onChange={(event) => setRangeMax(event.target.value)}
                       />
                     </label>
-                    <button onClick={fetchFromApi}>Apply</button>
+                    <button onClick={onApply}>Apply</button>
                   </div>
                 </div>
               </div>
@@ -507,8 +542,213 @@
         );
       }
 
+      function DepositAmount({
+        token0,
+        token1,
+        depositUsd,
+        setDepositUsd,
+        allocateData,
+        loading,
+        error,
+        onCalculate,
+      }) {
+        const parsedDeposit = Number(depositUsd);
+        const totalUsd = Number.isFinite(parsedDeposit) ? parsedDeposit : 0;
+        const amount0 = allocateData ? Number(allocateData.amount_token0) : 0;
+        const amount1 = allocateData ? Number(allocateData.amount_token1) : 0;
+        const price0 = allocateData ? Number(allocateData.price_token0_usd) : 0;
+        const price1 = allocateData ? Number(allocateData.price_token1_usd) : 0;
+        const token0Usd = amount0 * price0;
+        const token1Usd = amount1 * price1;
+
+        return (
+          <div className="card deposit-card">
+            <div className="deposit-header">
+              <div className="deposit-title">Deposit Amount</div>
+              <span className="subtitle">{loading ? "Calculating..." : error ? "Error" : ""}</span>
+            </div>
+            <div className="deposit-input">
+              <label>Total deposit (USD)</label>
+              <input
+                value={depositUsd}
+                onChange={(event) => setDepositUsd(event.target.value)}
+                placeholder="1000"
+              />
+            </div>
+            <button onClick={onCalculate}>Calculate</button>
+            <div className="token-rows">
+              <div className="token-row">
+                <div>
+                  {token0}
+                  <span>Amount</span>
+                </div>
+                <div className="token-value">
+                  <strong>{amount0.toFixed(6)}</strong>
+                  <span>${token0Usd.toFixed(2)}</span>
+                </div>
+              </div>
+              <div className="token-row">
+                <div>
+                  {token1}
+                  <span>Amount</span>
+                </div>
+                <div className="token-value">
+                  <strong>{amount1.toFixed(6)}</strong>
+                  <span>${token1Usd.toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+            <div className="split-labels">
+              <span>Input USD: ${totalUsd.toFixed(2)}</span>
+              <span>Output USD: ${(token0Usd + token1Usd).toFixed(2)}</span>
+            </div>
+          </div>
+        );
+      }
+
+      function Page() {
+        const [distributionData, setDistributionData] = useState(null);
+        const [distributionLoading, setDistributionLoading] = useState(false);
+        const [distributionError, setDistributionError] = useState("");
+        const [allocateData, setAllocateData] = useState(null);
+        const [allocateLoading, setAllocateLoading] = useState(false);
+        const [allocateError, setAllocateError] = useState("");
+        const [rangeMin, setRangeMin] = useState("2833.5");
+        const [rangeMax, setRangeMax] = useState("3242.4");
+        const [depositUsd, setDepositUsd] = useState("1000");
+        const allocateDebounceRef = useRef(null);
+        const hasMountedRef = useRef(false);
+
+        const apiUrl = "http://localhost:8000/api/liquidity-distribution";
+        const allocateUrl = "http://localhost:8000/v1/allocate";
+        const token = "dev-token";
+
+        const fetchDistribution = async () => {
+          setDistributionLoading(true);
+          setDistributionError("");
+          try {
+            const parsedMin = Number(rangeMin);
+            const parsedMax = Number(rangeMax);
+            const payload = {
+              pool_id: REQUEST.poolId,
+              snapshot_date: REQUEST.snapshotDate,
+              current_tick: REQUEST.currentTick,
+              tick_range: REQUEST.tickRange,
+              range_min: Number.isFinite(parsedMin) ? parsedMin : null,
+              range_max: Number.isFinite(parsedMax) ? parsedMax : null,
+            };
+            const response = await fetch(apiUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify(payload),
+            });
+            if (!response.ok) {
+              const message = await response.text();
+              throw new Error(message || "API error");
+            }
+            const data = await response.json();
+            setDistributionData(data);
+          } catch (err) {
+            setDistributionError(err.message || "Failed to load data.");
+            setDistributionData(null);
+          } finally {
+            setDistributionLoading(false);
+          }
+        };
+
+        const fetchAllocate = async () => {
+          setAllocateLoading(true);
+          setAllocateError("");
+          try {
+            const payload = {
+              pool_address: REQUEST.poolAddress,
+              rede: REQUEST.rede,
+              amount: depositUsd,
+              range1: rangeMin,
+              range2: rangeMax,
+            };
+            const response = await fetch(allocateUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify(payload),
+            });
+            if (!response.ok) {
+              const message = await response.text();
+              throw new Error(message || "API error");
+            }
+            const data = await response.json();
+            setAllocateData(data);
+          } catch (err) {
+            setAllocateError(err.message || "Failed to load data.");
+            setAllocateData(null);
+          } finally {
+            setAllocateLoading(false);
+          }
+        };
+
+        useEffect(() => {
+          fetchDistribution();
+          fetchAllocate();
+        }, []);
+
+        useEffect(() => {
+          if (!hasMountedRef.current) {
+            hasMountedRef.current = true;
+            return;
+          }
+          if (allocateDebounceRef.current) {
+            clearTimeout(allocateDebounceRef.current);
+          }
+          allocateDebounceRef.current = setTimeout(() => {
+            if (!Number.isFinite(Number(depositUsd))) {
+              return;
+            }
+            fetchAllocate();
+          }, 400);
+          return () => {
+            if (allocateDebounceRef.current) {
+              clearTimeout(allocateDebounceRef.current);
+            }
+          };
+        }, [depositUsd]);
+
+        const token0 = distributionData?.pool?.token0 || allocateData?.token0_symbol || "TOKEN0";
+        const token1 = distributionData?.pool?.token1 || allocateData?.token1_symbol || "TOKEN1";
+
+        return (
+          <>
+            <LiquidityChart
+              apiData={distributionData}
+              loading={distributionLoading}
+              error={distributionError}
+              rangeMin={rangeMin}
+              rangeMax={rangeMax}
+              setRangeMin={setRangeMin}
+              setRangeMax={setRangeMax}
+              onApply={fetchDistribution}
+            />
+            <DepositAmount
+              token0={token0}
+              token1={token1}
+              depositUsd={depositUsd}
+              setDepositUsd={setDepositUsd}
+              allocateData={allocateData}
+              loading={allocateLoading}
+              error={allocateError}
+              onCalculate={fetchAllocate}
+            />
+          </>
+        );
+      }
+
       const root = ReactDOM.createRoot(document.getElementById("root"));
-      root.render(<LiquidityChart />);
+      root.render(<Page />);
     </script>
   </body>
 </html>
