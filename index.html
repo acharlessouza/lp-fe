@@ -1173,7 +1173,22 @@
         bounds,
         timeframeDays,
         setTimeframeDays,
+        feeTier,
+        token0Decimals,
+        token1Decimals,
       }) {
+        const fallbackFeeTier = 3000;
+        const fallbackToken0Decimals = 18;
+        const fallbackToken1Decimals = 6;
+        const resolvedFeeTier = Number.isFinite(Number(feeTier))
+          ? Number(feeTier)
+          : fallbackFeeTier;
+        const resolvedToken0Decimals = Number.isFinite(Number(token0Decimals))
+          ? Number(token0Decimals)
+          : fallbackToken0Decimals;
+        const resolvedToken1Decimals = Number.isFinite(Number(token1Decimals))
+          ? Number(token1Decimals)
+          : fallbackToken1Decimals;
         const parsedMin = Number(rangeMin);
         const parsedMax = Number(rangeMax);
         const minBound = Number.isFinite(bounds?.min) ? bounds.min : null;
@@ -1181,6 +1196,16 @@
         const hasBounds = Number.isFinite(minBound) && Number.isFinite(maxBound) && maxBound !== minBound;
         let lowPercent = 0.18;
         let highPercent = 0.82;
+        const tickSpacingMap = {
+          100: 1,
+          500: 10,
+          3000: 60,
+          10000: 200,
+        };
+        const tickSpacing = tickSpacingMap[resolvedFeeTier] ?? 1;
+        const decimalAdjust = Math.pow(10, resolvedToken0Decimals - resolvedToken1Decimals);
+        const minTick = -887272;
+        const maxTick = 887272;
 
         const handleTimeframeChange = (value) => {
           const parsed = Number(value);
@@ -1197,7 +1222,7 @@
           if (!Number.isFinite(value)) {
             return "";
           }
-          return value.toFixed(2);
+          return value.toFixed(6);
         };
 
         const getSafeValue = (value, fallback) => {
@@ -1208,6 +1233,62 @@
             return fallback;
           }
           return 0;
+        };
+
+        const snapPriceToTick = (price, roundDown) => {
+          if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(tickSpacing) || tickSpacing <= 0) {
+            return null;
+          }
+          const adjustedPrice = price / decimalAdjust;
+          if (!Number.isFinite(adjustedPrice) || adjustedPrice <= 0) {
+            return null;
+          }
+          const rawTick = Math.log(adjustedPrice) / Math.log(1.0001);
+          if (!Number.isFinite(rawTick)) {
+            return null;
+          }
+          const snappedTick = roundDown
+            ? Math.floor(rawTick / tickSpacing) * tickSpacing
+            : Math.ceil(rawTick / tickSpacing) * tickSpacing;
+          const clampedTick = Math.min(maxTick, Math.max(minTick, snappedTick));
+          const snappedPrice = Math.pow(1.0001, clampedTick) * decimalAdjust;
+          return Number.isFinite(snappedPrice) ? snappedPrice : null;
+        };
+
+        const updateRangeValue = (value, roundDown) => {
+          if (value === "") {
+            return value;
+          }
+          const parsed = Number(value);
+          if (!Number.isFinite(parsed)) {
+            return value;
+          }
+          const snapped = snapPriceToTick(parsed, roundDown);
+          if (snapped === null) {
+            return value;
+          }
+          const clamped =
+            hasBounds && Number.isFinite(minBound) && Number.isFinite(maxBound)
+              ? Math.min(maxBound, Math.max(minBound, snapped))
+              : snapped;
+          return formatRangeValue(clamped);
+        };
+
+        const commitRangeValue = (value, roundDown, setter) => {
+          if (value === "") {
+            return;
+          }
+          const parsed = Number(value);
+          if (!Number.isFinite(parsed)) {
+            return;
+          }
+          const snapped = snapPriceToTick(parsed, roundDown);
+          const nextValue = snapped === null ? parsed : snapped;
+          const clamped =
+            hasBounds && Number.isFinite(minBound) && Number.isFinite(maxBound)
+              ? Math.min(maxBound, Math.max(minBound, nextValue))
+              : nextValue;
+          setter(formatRangeValue(clamped));
         };
 
         if (hasBounds && Number.isFinite(parsedMin) && Number.isFinite(parsedMax)) {
@@ -1233,6 +1314,9 @@
 
         return (
           <div className="card range-card">
+            <input type="hidden" name="fee_tier" value={resolvedFeeTier} />
+            <input type="hidden" name="token0_decimals" value={resolvedToken0Decimals} />
+            <input type="hidden" name="token1_decimals" value={resolvedToken1Decimals} />
             <div className="range-header">
               <div>
                 <div className="range-title">Liquidity Price Range</div>
@@ -1283,6 +1367,12 @@
                 <input
                   value={rangeMin}
                   onChange={(event) => setRangeMin(event.target.value)}
+                  onBlur={(event) => commitRangeValue(event.target.value, true, setRangeMin)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.currentTarget.blur();
+                    }
+                  }}
                 />
               </label>
               <label>
@@ -1290,6 +1380,12 @@
                 <input
                   value={rangeMax}
                   onChange={(event) => setRangeMax(event.target.value)}
+                  onBlur={(event) => commitRangeValue(event.target.value, false, setRangeMax)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.currentTarget.blur();
+                    }
+                  }}
                 />
               </label>
             </div>
@@ -1314,10 +1410,17 @@
                 onChange={(event) => {
                   const value = Number(event.target.value);
                   if (!Number.isFinite(value)) return;
-                  if (Number.isFinite(parsedMax) && value > parsedMax) {
-                    setRangeMax(formatRangeValue(value));
+                  const snapped = snapPriceToTick(value, true);
+                  const nextValue =
+                    snapped === null
+                      ? value
+                      : hasBounds && Number.isFinite(minBound) && Number.isFinite(maxBound)
+                        ? Math.min(maxBound, Math.max(minBound, snapped))
+                        : snapped;
+                  if (Number.isFinite(parsedMax) && nextValue > parsedMax) {
+                    setRangeMax(formatRangeValue(nextValue));
                   }
-                  setRangeMin(formatRangeValue(value));
+                  setRangeMin(formatRangeValue(nextValue));
                 }}
                 disabled={!hasBounds}
               />
@@ -1330,10 +1433,17 @@
                 onChange={(event) => {
                   const value = Number(event.target.value);
                   if (!Number.isFinite(value)) return;
-                  if (Number.isFinite(parsedMin) && value < parsedMin) {
-                    setRangeMin(formatRangeValue(value));
+                  const snapped = snapPriceToTick(value, false);
+                  const nextValue =
+                    snapped === null
+                      ? value
+                      : hasBounds && Number.isFinite(minBound) && Number.isFinite(maxBound)
+                        ? Math.min(maxBound, Math.max(minBound, snapped))
+                        : snapped;
+                  if (Number.isFinite(parsedMin) && nextValue < parsedMin) {
+                    setRangeMin(formatRangeValue(nextValue));
                   }
-                  setRangeMax(formatRangeValue(value));
+                  setRangeMax(formatRangeValue(nextValue));
                 }}
                 disabled={!hasBounds}
               />
@@ -1565,6 +1675,9 @@
 
         const token0 = distributionData?.pool?.token0 || allocateData?.token0_symbol || "TOKEN0";
         const token1 = distributionData?.pool?.token1 || allocateData?.token1_symbol || "TOKEN1";
+        const feeTier = distributionData?.pool?.fee_tier ?? allocateData?.taxa ?? null;
+        const token0Decimals = distributionData?.pool?.token0_decimals ?? null;
+        const token1Decimals = distributionData?.pool?.token1_decimals ?? null;
         const rangeBounds = useMemo(() => {
           if (!distributionData?.data?.length) return { min: null, max: null };
           const prices = distributionData.data
@@ -1587,6 +1700,9 @@
                 bounds={rangeBounds}
                 timeframeDays={timeframeDays}
                 setTimeframeDays={setTimeframeDays}
+                feeTier={feeTier}
+                token0Decimals={token0Decimals}
+                token1Decimals={token1Decimals}
               />
               <DepositAmount
                 token0={token0}
