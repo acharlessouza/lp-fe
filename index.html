@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Liquidity Distribution Preview</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg-1: #0f1120;
+        --bg-2: #1b1d35;
+        --card: rgba(22, 24, 44, 0.85);
+        --card-border: rgba(124, 140, 255, 0.25);
+        --text: #f5f6ff;
+        --muted: #9aa0c3;
+        --accent: #41d9c1;
+        --accent-2: #f4b95b;
+        --bar: #7c8cff;
+        --bar-dim: rgba(124, 140, 255, 0.25);
+        --range: #3ee08f;
+        --current: rgba(124, 140, 255, 0.8);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Space Grotesk", sans-serif;
+        background: radial-gradient(circle at top, #1b2448 0%, var(--bg-1) 45%, #0b0d18 100%);
+        color: var(--text);
+      }
+
+      .page {
+        min-height: 100vh;
+        padding: 48px 20px 80px;
+        display: flex;
+        justify-content: center;
+      }
+
+      .wrap {
+        width: min(1080px, 100%);
+        display: grid;
+        gap: 24px;
+      }
+
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .title {
+        font-size: 28px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+      }
+
+      .subtitle {
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--card-border);
+        border-radius: 18px;
+        padding: 24px;
+        box-shadow: 0 20px 40px rgba(6, 8, 20, 0.4);
+      }
+
+      .chart-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+        margin-bottom: 12px;
+      }
+
+      .chart-title {
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .axis-labels {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 6px;
+      }
+
+      .chart-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .chart-meta .price {
+        font-size: 16px;
+        color: var(--text);
+      }
+
+      .range-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+        margin-top: 8px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .range-controls input {
+        width: 120px;
+        padding: 6px 8px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(12, 14, 28, 0.6);
+        color: var(--text);
+        font-family: inherit;
+        font-size: 13px;
+      }
+
+      .range-controls button {
+        padding: 6px 12px;
+        border-radius: 8px;
+        border: 1px solid rgba(124, 140, 255, 0.45);
+        background: rgba(124, 140, 255, 0.2);
+        color: var(--text);
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 12px;
+      }
+
+      .chart-meta .lock {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .chart-meta .lock::after {
+        content: "🔒";
+        font-size: 12px;
+      }
+
+      .zoom-controls {
+        display: flex;
+        gap: 8px;
+      }
+
+      .zoom-controls button {
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(12, 14, 28, 0.7);
+        color: var(--text);
+        cursor: pointer;
+        font-weight: 600;
+      }
+
+      .legend {
+        display: flex;
+        gap: 16px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .legend span::before {
+        content: "";
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        margin-right: 6px;
+        border-radius: 999px;
+        vertical-align: middle;
+      }
+
+      .legend .range::before {
+        background: var(--range);
+      }
+
+      .legend .liquidity::before {
+        background: var(--bar);
+      }
+
+      .chart-shell {
+        position: relative;
+      }
+
+      .hover-line {
+        position: absolute;
+        top: 86px;
+        bottom: 48px;
+        width: 1px;
+        background: rgba(255, 255, 255, 0.2);
+        pointer-events: none;
+      }
+
+      .tooltip {
+        position: absolute;
+        top: 12px;
+        transform: translateX(-50%);
+        background: rgba(15, 17, 32, 0.92);
+        border: 1px solid rgba(124, 140, 255, 0.35);
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: 12px;
+        color: var(--text);
+        pointer-events: none;
+        box-shadow: 0 12px 20px rgba(5, 8, 20, 0.4);
+        min-width: 160px;
+      }
+
+      .tooltip .label {
+        color: var(--muted);
+        font-size: 11px;
+        margin-bottom: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div class="wrap">
+        <div id="root"></div>
+      </div>
+    </div>
+
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script type="text/babel">
+      const { useEffect, useMemo, useState } = React;
+
+      const REQUEST = {
+        poolId: 572,
+        snapshotDate: "2025-12-24",
+        currentTick: 0,
+        tickRange: 6000,
+      };
+
+      function LiquidityChart() {
+        const [apiData, setApiData] = useState(null);
+        const [error, setError] = useState("");
+        const [loading, setLoading] = useState(false);
+        const [hoverIndex, setHoverIndex] = useState(null);
+        const [rangeMin, setRangeMin] = useState("2833.5");
+        const [rangeMax, setRangeMax] = useState("3242.4");
+
+        const apiUrl = "http://localhost:8000/api/liquidity-distribution";
+        const token = "dev-token";
+
+        const fetchFromApi = async () => {
+          setLoading(true);
+          setError("");
+          try {
+            const parsedMin = Number(rangeMin);
+            const parsedMax = Number(rangeMax);
+            const payload = {
+              pool_id: REQUEST.poolId,
+              snapshot_date: REQUEST.snapshotDate,
+              current_tick: REQUEST.currentTick,
+              tick_range: REQUEST.tickRange,
+              range_min: Number.isFinite(parsedMin) ? parsedMin : null,
+              range_max: Number.isFinite(parsedMax) ? parsedMax : null,
+            };
+            const response = await fetch(apiUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify(payload),
+            });
+            if (!response.ok) {
+              const message = await response.text();
+              throw new Error(message || "API error");
+            }
+            const data = await response.json();
+            setApiData(data);
+          } catch (err) {
+            setError(err.message || "Failed to load data.");
+            setApiData(null);
+          } finally {
+            setLoading(false);
+          }
+        };
+
+        useEffect(() => {
+          fetchFromApi();
+        }, []);
+
+        const points = useMemo(() => {
+          if (!apiData?.data?.length) return [];
+          return apiData.data
+            .map((point) => ({
+              tick: Number(point.tick),
+              liquidity: String(point.liquidity),
+              liquidityValue: Number(point.liquidity),
+              price: Number(point.price),
+            }))
+            .sort((a, b) => a.tick - b.tick);
+        }, [apiData]);
+
+        const token0 = apiData?.pool?.token0 || "TOKEN0";
+        const token1 = apiData?.pool?.token1 || "TOKEN1";
+        const currentTick = apiData?.current_tick ?? REQUEST.currentTick;
+        const rangeMinValue = Number.isFinite(Number(rangeMin)) ? Number(rangeMin) : null;
+        const rangeMaxValue = Number.isFinite(Number(rangeMax)) ? Number(rangeMax) : null;
+        const hasRange = rangeMinValue !== null && rangeMaxValue !== null;
+        const rangeLow = hasRange ? Math.min(rangeMinValue, rangeMaxValue) : null;
+        const rangeHigh = hasRange ? Math.max(rangeMinValue, rangeMaxValue) : null;
+
+        const defaultIndex = useMemo(() => {
+          if (!points.length) return null;
+          let bestIndex = 0;
+          let bestDistance = Math.abs(points[0].tick - currentTick);
+          points.forEach((point, idx) => {
+            const distance = Math.abs(point.tick - currentTick);
+            if (distance < bestDistance) {
+              bestDistance = distance;
+              bestIndex = idx;
+            }
+          });
+          return bestIndex;
+        }, [points, currentTick]);
+
+        const hoverPoint =
+          hoverIndex !== null && points[hoverIndex] ? points[hoverIndex] : points[defaultIndex];
+
+        const minTick = points.length ? points[0].tick : currentTick - REQUEST.tickRange;
+        const maxTick = points.length ? points[points.length - 1].tick : currentTick + REQUEST.tickRange;
+        const maxLiquidity = points.length
+          ? Math.max(...points.map((point) => point.liquidityValue))
+          : 0;
+
+        const width = 820;
+        const height = 260;
+        const padding = 24;
+        const chartWidth = width - padding * 2;
+        const chartHeight = height - padding * 2;
+        const barWidth = points.length ? chartWidth / points.length : chartWidth;
+
+        const scaleX = (tick) => {
+          if (maxTick === minTick) return padding;
+          const ratio = (tick - minTick) / (maxTick - minTick);
+          return padding + ratio * chartWidth;
+        };
+
+        const handleMouseMove = (event) => {
+          if (!points.length) return;
+          const rect = event.currentTarget.getBoundingClientRect();
+          const paddingPx = (padding / width) * rect.width;
+          const innerWidth = rect.width - paddingPx * 2;
+          const x = Math.min(innerWidth, Math.max(0, event.clientX - rect.left - paddingPx));
+          const idx = Math.round((x / innerWidth) * (points.length - 1));
+          setHoverIndex(idx);
+        };
+
+        return (
+          <div className="card">
+            <div className="chart-header">
+              <div>
+                <div className="chart-title">Liquidity Distribution</div>
+                <div className="chart-meta">
+                  <div className="price">
+                    1 {token0} = {hoverPoint ? hoverPoint.price.toFixed(2) : "..."} {token1}
+                  </div>
+                  <div className="range-controls">
+                    <label>
+                      Range min
+                      <input
+                        value={rangeMin}
+                        onChange={(event) => setRangeMin(event.target.value)}
+                      />
+                    </label>
+                    <label>
+                      Range max
+                      <input
+                        value={rangeMax}
+                        onChange={(event) => setRangeMax(event.target.value)}
+                      />
+                    </label>
+                    <button onClick={fetchFromApi}>Apply</button>
+                  </div>
+                </div>
+              </div>
+              <div className="subtitle">{loading ? "Loading..." : error ? "API error" : ""}</div>
+            </div>
+
+            <div className="chart-shell">
+              <svg
+                width="100%"
+                viewBox={`0 0 ${width} ${height}`}
+                onMouseMove={handleMouseMove}
+                onMouseLeave={() => setHoverIndex(null)}
+              >
+                <rect
+                  x="0"
+                  y="0"
+                  width={width}
+                  height={height}
+                  rx="14"
+                  fill="rgba(10, 12, 26, 0.7)"
+                />
+                {points.map((point, idx) => {
+                  const heightScale = maxLiquidity > 0 ? point.liquidityValue / maxLiquidity : 0;
+                  const barHeight = heightScale * chartHeight;
+                  const x = scaleX(point.tick) - barWidth / 2;
+                  const y = height - padding - barHeight;
+                  return (
+                    <rect
+                      key={point.tick}
+                      x={x}
+                      y={y}
+                      width={Math.max(1, barWidth * 0.9)}
+                      height={barHeight}
+                      fill="var(--bar)"
+                      opacity={hoverIndex === idx ? 0.9 : 0.6}
+                    />
+                  );
+                })}
+                {hasRange && points.length ? (
+                  <line
+                    x1={scaleX(
+                      points.reduce((closest, point) =>
+                        Math.abs(point.price - rangeLow) <
+                        Math.abs(closest.price - rangeLow)
+                          ? point
+                          : closest
+                      ).tick
+                    )}
+                    x2={scaleX(
+                      points.reduce((closest, point) =>
+                        Math.abs(point.price - rangeLow) <
+                        Math.abs(closest.price - rangeLow)
+                          ? point
+                          : closest
+                      ).tick
+                    )}
+                    y1={padding}
+                    y2={height - padding}
+                    stroke="var(--range)"
+                    strokeWidth="2"
+                  />
+                ) : null}
+                {hasRange && points.length ? (
+                  <line
+                    x1={scaleX(
+                      points.reduce((closest, point) =>
+                        Math.abs(point.price - rangeHigh) <
+                        Math.abs(closest.price - rangeHigh)
+                          ? point
+                          : closest
+                      ).tick
+                    )}
+                    x2={scaleX(
+                      points.reduce((closest, point) =>
+                        Math.abs(point.price - rangeHigh) <
+                        Math.abs(closest.price - rangeHigh)
+                          ? point
+                          : closest
+                      ).tick
+                    )}
+                    y1={padding}
+                    y2={height - padding}
+                    stroke="var(--range)"
+                    strokeWidth="2"
+                  />
+                ) : null}
+                <line
+                  x1={scaleX(currentTick)}
+                  x2={scaleX(currentTick)}
+                  y1={padding}
+                  y2={height - padding}
+                  stroke="var(--current)"
+                  strokeWidth="1"
+                />
+              </svg>
+              {hoverPoint ? (
+                <div className="tooltip" style={{ left: `${scaleX(hoverPoint.tick)}px` }}>
+                  <div className="label">
+                    1 {token0} = {hoverPoint.price.toFixed(2)} {token1}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="axis-labels">
+              <span>{minTick}</span>
+              <span>{points.length ? "Distribution" : "No data"}</span>
+              <span>{maxTick}</span>
+            </div>
+          </div>
+        );
+      }
+
+      const root = ReactDOM.createRoot(document.getElementById("root"));
+      root.render(<LiquidityChart />);
+    </script>
+  </body>
+</html>
