@@ -46,8 +46,13 @@
       }
 
       .wrap {
-        width: min(1080px, 100%);
+        width: min(1200px, 100%);
+      }
+
+      #root {
         display: grid;
+        grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+        align-items: start;
         gap: 24px;
       }
 
@@ -299,6 +304,12 @@
         color: var(--muted);
         font-size: 11px;
         margin-bottom: 4px;
+      }
+
+      @media (max-width: 960px) {
+        #root {
+          grid-template-columns: 1fr;
+        }
       }
     </style>
   </head>
@@ -723,16 +734,6 @@
 
         return (
           <>
-            <LiquidityChart
-              apiData={distributionData}
-              loading={distributionLoading}
-              error={distributionError}
-              rangeMin={rangeMin}
-              rangeMax={rangeMax}
-              setRangeMin={setRangeMin}
-              setRangeMax={setRangeMax}
-              onApply={fetchDistribution}
-            />
             <DepositAmount
               token0={token0}
               token1={token1}
@@ -742,6 +743,16 @@
               loading={allocateLoading}
               error={allocateError}
               onCalculate={fetchAllocate}
+            />
+            <LiquidityChart
+              apiData={distributionData}
+              loading={distributionLoading}
+              error={distributionError}
+              rangeMin={rangeMin}
+              rangeMax={rangeMax}
+              setRangeMin={setRangeMin}
+              setRangeMax={setRangeMax}
+              onApply={fetchDistribution}
             />
           </>
         );
