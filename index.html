@@ -25,6 +25,7 @@
         --bar-dim: rgba(124, 140, 255, 0.25);
         --range: #3ee08f;
         --current: rgba(124, 140, 255, 0.8);
+        --price-current: #f16aa7;
       }
 
       * {
@@ -54,6 +55,11 @@
         grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
         align-items: start;
         gap: 24px;
+      }
+
+      .stack {
+        display: grid;
+        gap: 20px;
       }
 
       header {
@@ -190,6 +196,339 @@
         color: var(--muted);
       }
 
+      .action-button {
+        padding: 10px 14px;
+        border-radius: 12px;
+        border: 1px solid rgba(124, 140, 255, 0.45);
+        background: linear-gradient(135deg, rgba(124, 140, 255, 0.25), rgba(65, 217, 193, 0.18));
+        color: var(--text);
+        font-family: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .ghost-button {
+        background: rgba(12, 14, 28, 0.6);
+        border-color: rgba(124, 140, 255, 0.25);
+      }
+
+      .fees-card {
+        display: grid;
+        gap: 16px;
+      }
+
+      .fees-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+      }
+
+      .fees-title {
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .fees-title span {
+        color: var(--muted);
+      }
+
+      .fees-value {
+        font-size: 24px;
+        font-weight: 600;
+        margin-top: 6px;
+      }
+
+      .fees-chip {
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--accent);
+        background: rgba(65, 217, 193, 0.15);
+        border: 1px solid rgba(65, 217, 193, 0.35);
+      }
+
+      .fees-rows {
+        display: grid;
+        gap: 10px;
+      }
+
+      .fees-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .fees-row strong {
+        color: var(--text);
+        font-weight: 600;
+      }
+
+      .range-card {
+        display: grid;
+        gap: 14px;
+      }
+
+      .range-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+      }
+
+      .range-title {
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      .range-subtitle {
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 4px;
+      }
+
+      .range-badges {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 6px;
+      }
+
+      .chip {
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 600;
+        border: 1px solid rgba(124, 140, 255, 0.3);
+        background: rgba(124, 140, 255, 0.18);
+        color: var(--text);
+        cursor: pointer;
+      }
+
+      .chip.is-active {
+        border-color: rgba(65, 217, 193, 0.45);
+        background: rgba(65, 217, 193, 0.2);
+        color: var(--text);
+      }
+
+      .range-meta {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .range-meta-card {
+        display: grid;
+        gap: 8px;
+        padding: 12px;
+        border-radius: 12px;
+        background: rgba(12, 14, 28, 0.6);
+        border: 1px solid rgba(124, 140, 255, 0.15);
+      }
+
+      .range-meta-card span {
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .range-meta-card strong {
+        font-size: 13px;
+      }
+
+      .timeframe-controls {
+        display: grid;
+        grid-template-columns: 32px minmax(0, 1fr) 32px;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .timeframe-controls button {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        border: 1px solid rgba(124, 140, 255, 0.3);
+        background: rgba(12, 14, 28, 0.6);
+        color: var(--text);
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .timeframe-controls input {
+        width: 100%;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(12, 14, 28, 0.6);
+        color: var(--text);
+        font-family: inherit;
+        font-size: 13px;
+        text-align: center;
+      }
+
+      .range-inputs {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .range-inputs label {
+        display: grid;
+        gap: 6px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      .range-inputs input {
+        width: 100%;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(12, 14, 28, 0.6);
+        color: var(--text);
+        font-family: inherit;
+        font-size: 13px;
+      }
+
+      .range-slider {
+        position: relative;
+        height: 10px;
+        border-radius: 999px;
+        background: rgba(124, 140, 255, 0.2);
+      }
+
+      .range-sliders {
+        position: relative;
+        height: 28px;
+        display: grid;
+        align-items: center;
+      }
+
+      .range-sliders input[type="range"] {
+        position: absolute;
+        left: 0;
+        right: 0;
+        width: 100%;
+        margin: 0;
+        appearance: none;
+        height: 10px;
+        background: transparent;
+        pointer-events: none;
+      }
+
+      .range-sliders input[type="range"]::-webkit-slider-thumb {
+        appearance: none;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: var(--text);
+        border: 2px solid var(--range);
+        pointer-events: auto;
+        cursor: pointer;
+      }
+
+      .range-sliders input[type="range"]::-moz-range-thumb {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: var(--text);
+        border: 2px solid var(--range);
+        pointer-events: auto;
+        cursor: pointer;
+      }
+
+      .range-fill {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        border-radius: 999px;
+        background: linear-gradient(90deg, rgba(65, 217, 193, 0.45), rgba(124, 140, 255, 0.6));
+      }
+
+      .range-handle {
+        position: absolute;
+        top: 50%;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--text);
+        border: 2px solid var(--range);
+        transform: translate(-50%, -50%);
+      }
+
+      .range-values {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .pool-price-card {
+        display: grid;
+        gap: 16px;
+      }
+
+      .price-title {
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .price-stats {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .stat-card {
+        padding: 10px 12px;
+        border-radius: 12px;
+        background: rgba(12, 14, 28, 0.55);
+        border: 1px solid rgba(124, 140, 255, 0.15);
+        display: grid;
+        gap: 6px;
+      }
+
+      .stat-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+
+      .stat-value {
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      .price-chart {
+        position: relative;
+        margin-top: 8px;
+      }
+
+      .price-line--min,
+      .price-line--max {
+        stroke: var(--range);
+        stroke-dasharray: 6 6;
+        opacity: 0.75;
+      }
+
+      .price-line--current {
+        stroke: var(--price-current);
+        stroke-dasharray: 6 6;
+        opacity: 0.85;
+      }
+
+      .price-axis {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 8px;
+      }
+
       .token-rows {
         display: grid;
         gap: 12px;
@@ -309,6 +648,17 @@
       @media (max-width: 960px) {
         #root {
           grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 720px) {
+        .range-meta,
+        .range-inputs {
+          grid-template-columns: 1fr;
+        }
+
+        .price-stats {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
         }
       }
     </style>
@@ -553,6 +903,452 @@
         );
       }
 
+      function PoolPriceChart({
+        apiData,
+        loading,
+        error,
+        rangeMin,
+        rangeMax,
+        token0,
+        token1,
+      }) {
+        const [hoverIndex, setHoverIndex] = useState(null);
+
+        const points = useMemo(() => {
+          if (!apiData?.series?.length) return [];
+          return apiData.series
+            .map((point) => {
+              const ts = new Date(point.timestamp);
+              return {
+                timestamp: point.timestamp,
+                tsMs: Number.isFinite(ts.getTime()) ? ts.getTime() : null,
+                price: Number(point.price),
+              };
+            })
+            .filter((point) => Number.isFinite(point.tsMs) && Number.isFinite(point.price))
+            .sort((a, b) => a.tsMs - b.tsMs);
+        }, [apiData]);
+
+        const stats = apiData?.stats || {};
+        const statMin = Number(stats.min);
+        const statMax = Number(stats.max);
+        const statAvg = Number(stats.avg);
+        const statPrice = Number(stats.price);
+
+        const minInput = Number(rangeMin);
+        const maxInput = Number(rangeMax);
+
+        const seriesPrices = points.map((point) => point.price);
+        const fallbackPrices = [statPrice, minInput, maxInput].filter((value) => Number.isFinite(value));
+        const pricesForScale = seriesPrices.length ? seriesPrices : fallbackPrices;
+        let minPrice = pricesForScale.length ? Math.min(...pricesForScale) : 0;
+        let maxPrice = pricesForScale.length ? Math.max(...pricesForScale) : 1;
+        if (minPrice === maxPrice) {
+          minPrice -= 1;
+          maxPrice += 1;
+        }
+
+        const minTs = points.length ? points[0].tsMs : 0;
+        const maxTs = points.length ? points[points.length - 1].tsMs : 1;
+
+        const width = 820;
+        const height = 260;
+        const padding = 24;
+        const chartWidth = width - padding * 2;
+        const chartHeight = height - padding * 2;
+        const baseY = height - padding;
+
+        const scaleX = (timestamp) => {
+          if (maxTs === minTs) return padding;
+          const ratio = (timestamp - minTs) / (maxTs - minTs);
+          return padding + ratio * chartWidth;
+        };
+
+        const scaleY = (price) => {
+          if (maxPrice === minPrice) return height / 2;
+          const ratio = (price - minPrice) / (maxPrice - minPrice);
+          return height - padding - ratio * chartHeight;
+        };
+
+        const clampY = (value) => Math.min(baseY, Math.max(padding, value));
+
+        const linePath = points.length
+          ? points
+              .map((point, idx) => {
+                const command = idx === 0 ? "M" : "L";
+                return `${command} ${scaleX(point.tsMs)} ${scaleY(point.price)}`;
+              })
+              .join(" ")
+          : "";
+
+        const areaPath = points.length
+          ? [
+              `M ${scaleX(points[0].tsMs)} ${baseY}`,
+              `L ${scaleX(points[0].tsMs)} ${scaleY(points[0].price)}`,
+              ...points.slice(1).map((point) => `L ${scaleX(point.tsMs)} ${scaleY(point.price)}`),
+              `L ${scaleX(points[points.length - 1].tsMs)} ${baseY}`,
+              "Z",
+            ].join(" ")
+          : "";
+
+        const handleMouseMove = (event) => {
+          if (!points.length) return;
+          const rect = event.currentTarget.getBoundingClientRect();
+          const paddingPx = (padding / width) * rect.width;
+          const innerWidth = rect.width - paddingPx * 2;
+          const x = Math.min(innerWidth, Math.max(0, event.clientX - rect.left - paddingPx));
+          const ratio = innerWidth > 0 ? x / innerWidth : 0;
+          const hoverTime = minTs + ratio * (maxTs - minTs);
+          let closestIndex = 0;
+          let bestDistance = Math.abs(points[0].tsMs - hoverTime);
+          points.forEach((point, idx) => {
+            const distance = Math.abs(point.tsMs - hoverTime);
+            if (distance < bestDistance) {
+              bestDistance = distance;
+              closestIndex = idx;
+            }
+          });
+          setHoverIndex(closestIndex);
+        };
+
+        const hoverPoint =
+          hoverIndex !== null && points[hoverIndex] ? points[hoverIndex] : points[points.length - 1];
+
+        const formatDateTime = (timestamp) => {
+          if (!timestamp) return "--";
+          const date = new Date(timestamp);
+          if (!Number.isFinite(date.getTime())) return "--";
+          const pad = (value) => String(value).padStart(2, "0");
+          return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+            date.getDate()
+          )} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+        };
+
+        const formatStat = (value) => (Number.isFinite(value) ? value.toFixed(2) : "--");
+
+        const axisStart = points.length ? formatDateTime(points[0].timestamp) : "No data";
+        const axisEnd = points.length ? formatDateTime(points[points.length - 1].timestamp) : "--";
+
+        return (
+          <div className="card pool-price-card">
+            <div className="chart-header">
+              <div>
+                <div className="price-title">Pool Price</div>
+                <div className="subtitle">
+                  1 {token0} = {Number.isFinite(statPrice) ? statPrice.toFixed(2) : "--"} {token1}
+                </div>
+              </div>
+              <div className="subtitle">{loading ? "Loading..." : error ? "API error" : ""}</div>
+            </div>
+            <div className="price-stats">
+              <div className="stat-card">
+                <span className="stat-label">MIN</span>
+                <span className="stat-value">{formatStat(statMin)}</span>
+              </div>
+              <div className="stat-card">
+                <span className="stat-label">PRICE</span>
+                <span className="stat-value">{formatStat(statPrice)}</span>
+              </div>
+              <div className="stat-card">
+                <span className="stat-label">AVG</span>
+                <span className="stat-value">{formatStat(statAvg)}</span>
+              </div>
+              <div className="stat-card">
+                <span className="stat-label">MAX</span>
+                <span className="stat-value">{formatStat(statMax)}</span>
+              </div>
+            </div>
+            <div className="price-chart">
+              <svg
+                width="100%"
+                viewBox={`0 0 ${width} ${height}`}
+                onMouseMove={handleMouseMove}
+                onMouseLeave={() => setHoverIndex(null)}
+              >
+                <defs>
+                  <linearGradient id="priceFill" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stopColor="rgba(124, 140, 255, 0.45)" />
+                    <stop offset="100%" stopColor="rgba(124, 140, 255, 0.05)" />
+                  </linearGradient>
+                </defs>
+                <rect
+                  x="0"
+                  y="0"
+                  width={width}
+                  height={height}
+                  rx="14"
+                  fill="rgba(10, 12, 26, 0.7)"
+                />
+                {Number.isFinite(minInput) ? (
+                  <line
+                    x1={padding}
+                    x2={width - padding}
+                    y1={clampY(scaleY(minInput))}
+                    y2={clampY(scaleY(minInput))}
+                    className="price-line--min"
+                    strokeWidth="1.5"
+                  />
+                ) : null}
+                {Number.isFinite(maxInput) ? (
+                  <line
+                    x1={padding}
+                    x2={width - padding}
+                    y1={clampY(scaleY(maxInput))}
+                    y2={clampY(scaleY(maxInput))}
+                    className="price-line--max"
+                    strokeWidth="1.5"
+                  />
+                ) : null}
+                {Number.isFinite(statPrice) ? (
+                  <line
+                    x1={padding}
+                    x2={width - padding}
+                    y1={clampY(scaleY(statPrice))}
+                    y2={clampY(scaleY(statPrice))}
+                    className="price-line--current"
+                    strokeWidth="1.5"
+                  />
+                ) : null}
+                {areaPath ? <path d={areaPath} fill="url(#priceFill)" /> : null}
+                {linePath ? (
+                  <path d={linePath} fill="none" stroke="var(--bar)" strokeWidth="2" />
+                ) : null}
+              </svg>
+              {hoverPoint ? (
+                <div className="tooltip" style={{ left: `${scaleX(hoverPoint.tsMs)}px` }}>
+                  <div className="label">
+                    1 {token0} = {hoverPoint.price.toFixed(2)} {token1}
+                  </div>
+                  <div>{formatDateTime(hoverPoint.timestamp)}</div>
+                </div>
+              ) : null}
+            </div>
+            <div className="price-axis">
+              <span>{axisStart}</span>
+              <span>{axisEnd}</span>
+            </div>
+          </div>
+        );
+      }
+
+      function EstimatedFees() {
+        return (
+          <div className="card fees-card">
+            <div className="fees-header">
+              <div>
+                <div className="fees-title">
+                  Estimated Fees <span>(24h)</span>
+                </div>
+                <div className="fees-value">$3.744</div>
+              </div>
+              <div className="fees-chip">Fee APR 12.92%</div>
+            </div>
+            <div className="fees-rows">
+              <div className="fees-row">
+                <span>Volume (24h)</span>
+                <strong>$9.05M</strong>
+              </div>
+              <div className="fees-row">
+                <span>Fees (24h)</span>
+                <strong>$3.78</strong>
+              </div>
+              <div className="fees-row">
+                <span>Pool APR</span>
+                <strong>12.92%</strong>
+              </div>
+            </div>
+            <button className="action-button ghost-button" type="button">
+              Simulate Position Performance
+            </button>
+          </div>
+        );
+      }
+
+      function LiquidityPriceRange({
+        rangeMin,
+        rangeMax,
+        setRangeMin,
+        setRangeMax,
+        onApply,
+        bounds,
+        timeframeDays,
+        setTimeframeDays,
+      }) {
+        const parsedMin = Number(rangeMin);
+        const parsedMax = Number(rangeMax);
+        const minBound = Number.isFinite(bounds?.min) ? bounds.min : null;
+        const maxBound = Number.isFinite(bounds?.max) ? bounds.max : null;
+        const hasBounds = Number.isFinite(minBound) && Number.isFinite(maxBound) && maxBound !== minBound;
+        let lowPercent = 0.18;
+        let highPercent = 0.82;
+
+        const handleTimeframeChange = (value) => {
+          const parsed = Number(value);
+          if (!Number.isFinite(parsed)) {
+            return;
+          }
+          const clamped = Math.min(365, Math.max(1, Math.round(parsed)));
+          setTimeframeDays(clamped);
+        };
+
+        const step = 0.01;
+
+        const formatRangeValue = (value) => {
+          if (!Number.isFinite(value)) {
+            return "";
+          }
+          return value.toFixed(2);
+        };
+
+        const getSafeValue = (value, fallback) => {
+          if (Number.isFinite(value)) {
+            return value;
+          }
+          if (Number.isFinite(fallback)) {
+            return fallback;
+          }
+          return 0;
+        };
+
+        if (hasBounds && Number.isFinite(parsedMin) && Number.isFinite(parsedMax)) {
+          const low = Math.min(parsedMin, parsedMax);
+          const high = Math.max(parsedMin, parsedMax);
+          const clamp = (value) => Math.min(maxBound, Math.max(minBound, value));
+          const clampedLow = clamp(low);
+          const clampedHigh = clamp(high);
+          lowPercent = (clampedLow - minBound) / (maxBound - minBound);
+          highPercent = (clampedHigh - minBound) / (maxBound - minBound);
+        }
+
+        const displayMin =
+          Number.isFinite(parsedMin) ? parsedMin : Number.isFinite(minBound) ? minBound : 0;
+        const displayMax =
+          Number.isFinite(parsedMax) ? parsedMax : Number.isFinite(maxBound) ? maxBound : 0;
+        const lowPercentClamped = Math.max(0, Math.min(100, lowPercent * 100));
+        const highPercentClamped = Math.max(0, Math.min(100, highPercent * 100));
+        const safeMin = getSafeValue(parsedMin, minBound);
+        const safeMax = getSafeValue(parsedMax, maxBound);
+        const sliderMin = Math.min(safeMin, safeMax);
+        const sliderMax = Math.max(safeMin, safeMax);
+
+        return (
+          <div className="card range-card">
+            <div className="range-header">
+              <div>
+                <div className="range-title">Liquidity Price Range</div>
+                <div className="range-subtitle">Suggested range for balanced exposure</div>
+              </div>
+              <div className="range-badges">
+                <button className="chip is-active" type="button">
+                  Most Ticks
+                </button>
+                <button className="chip" type="button">
+                  Full Range
+                </button>
+              </div>
+            </div>
+            <div className="range-meta">
+              <div className="range-meta-card">
+                <span>Calculation Timeframe (Days)</span>
+                <div className="timeframe-controls">
+                  <button
+                    type="button"
+                    onClick={() => handleTimeframeChange(timeframeDays - 1)}
+                  >
+                    -
+                  </button>
+                  <input
+                    type="number"
+                    min="1"
+                    max="365"
+                    value={timeframeDays}
+                    onChange={(event) => handleTimeframeChange(event.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleTimeframeChange(timeframeDays + 1)}
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+              <div className="range-meta-card">
+                <span>Calculation Method</span>
+                <strong>Average Liquidity (Simple)</strong>
+              </div>
+            </div>
+            <div className="range-inputs">
+              <label>
+                Min Price
+                <input
+                  value={rangeMin}
+                  onChange={(event) => setRangeMin(event.target.value)}
+                />
+              </label>
+              <label>
+                Max Price
+                <input
+                  value={rangeMax}
+                  onChange={(event) => setRangeMax(event.target.value)}
+                />
+              </label>
+            </div>
+            <div className="range-sliders">
+              <div className="range-slider">
+                <div
+                  className="range-fill"
+                  style={{
+                    left: `${lowPercentClamped}%`,
+                    right: `${Math.max(0, Math.min(100, 100 - highPercentClamped))}%`,
+                  }}
+                ></div>
+                <div className="range-handle" style={{ left: `${lowPercentClamped}%` }}></div>
+                <div className="range-handle" style={{ left: `${highPercentClamped}%` }}></div>
+              </div>
+              <input
+                type="range"
+                min={hasBounds ? minBound : 0}
+                max={hasBounds ? maxBound : 100}
+                step={step}
+                value={sliderMin}
+                onChange={(event) => {
+                  const value = Number(event.target.value);
+                  if (!Number.isFinite(value)) return;
+                  if (Number.isFinite(parsedMax) && value > parsedMax) {
+                    setRangeMax(formatRangeValue(value));
+                  }
+                  setRangeMin(formatRangeValue(value));
+                }}
+                disabled={!hasBounds}
+              />
+              <input
+                type="range"
+                min={hasBounds ? minBound : 0}
+                max={hasBounds ? maxBound : 100}
+                step={step}
+                value={sliderMax}
+                onChange={(event) => {
+                  const value = Number(event.target.value);
+                  if (!Number.isFinite(value)) return;
+                  if (Number.isFinite(parsedMin) && value < parsedMin) {
+                    setRangeMin(formatRangeValue(value));
+                  }
+                  setRangeMax(formatRangeValue(value));
+                }}
+                disabled={!hasBounds}
+              />
+            </div>
+            <div className="range-values">
+              <span>${displayMin.toFixed(2)}</span>
+              <span>${displayMax.toFixed(2)}</span>
+            </div>
+            <button className="action-button" onClick={onApply} type="button">
+              Apply Range
+            </button>
+          </div>
+        );
+      }
+
       function DepositAmount({
         token0,
         token1,
@@ -586,7 +1382,9 @@
                 placeholder="1000"
               />
             </div>
-            <button onClick={onCalculate}>Calculate</button>
+            <button className="action-button" onClick={onCalculate} type="button">
+              Calculate
+            </button>
             <div className="token-rows">
               <div className="token-row">
                 <div>
@@ -621,16 +1419,21 @@
         const [distributionData, setDistributionData] = useState(null);
         const [distributionLoading, setDistributionLoading] = useState(false);
         const [distributionError, setDistributionError] = useState("");
+        const [poolPriceData, setPoolPriceData] = useState(null);
+        const [poolPriceLoading, setPoolPriceLoading] = useState(false);
+        const [poolPriceError, setPoolPriceError] = useState("");
         const [allocateData, setAllocateData] = useState(null);
         const [allocateLoading, setAllocateLoading] = useState(false);
         const [allocateError, setAllocateError] = useState("");
         const [rangeMin, setRangeMin] = useState("2833.5");
         const [rangeMax, setRangeMax] = useState("3242.4");
         const [depositUsd, setDepositUsd] = useState("1000");
+        const [timeframeDays, setTimeframeDays] = useState(14);
         const allocateDebounceRef = useRef(null);
         const hasMountedRef = useRef(false);
 
         const apiUrl = "http://localhost:8000/api/liquidity-distribution";
+        const poolPriceUrl = "http://localhost:8000/api/pool-price";
         const allocateUrl = "http://localhost:8000/v1/allocate";
         const token = "dev-token";
 
@@ -703,10 +1506,41 @@
           }
         };
 
+        const fetchPoolPrice = async () => {
+          setPoolPriceLoading(true);
+          setPoolPriceError("");
+          try {
+            const response = await fetch(
+              `${poolPriceUrl}?pool_id=${REQUEST.poolId}&days=${timeframeDays}`,
+              {
+                method: "GET",
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+              }
+            );
+            if (!response.ok) {
+              const message = await response.text();
+              throw new Error(message || "API error");
+            }
+            const data = await response.json();
+            setPoolPriceData(data);
+          } catch (err) {
+            setPoolPriceError(err.message || "Failed to load data.");
+            setPoolPriceData(null);
+          } finally {
+            setPoolPriceLoading(false);
+          }
+        };
+
         useEffect(() => {
           fetchDistribution();
           fetchAllocate();
         }, []);
+
+        useEffect(() => {
+          fetchPoolPrice();
+        }, [timeframeDays]);
 
         useEffect(() => {
           if (!hasMountedRef.current) {
@@ -731,29 +1565,61 @@
 
         const token0 = distributionData?.pool?.token0 || allocateData?.token0_symbol || "TOKEN0";
         const token1 = distributionData?.pool?.token1 || allocateData?.token1_symbol || "TOKEN1";
+        const rangeBounds = useMemo(() => {
+          if (!distributionData?.data?.length) return { min: null, max: null };
+          const prices = distributionData.data
+            .map((point) => Number(point.price))
+            .filter((value) => Number.isFinite(value));
+          if (!prices.length) return { min: null, max: null };
+          return { min: Math.min(...prices), max: Math.max(...prices) };
+        }, [distributionData]);
 
         return (
           <>
-            <DepositAmount
-              token0={token0}
-              token1={token1}
-              depositUsd={depositUsd}
-              setDepositUsd={setDepositUsd}
-              allocateData={allocateData}
-              loading={allocateLoading}
-              error={allocateError}
-              onCalculate={fetchAllocate}
-            />
-            <LiquidityChart
-              apiData={distributionData}
-              loading={distributionLoading}
-              error={distributionError}
-              rangeMin={rangeMin}
-              rangeMax={rangeMax}
-              setRangeMin={setRangeMin}
-              setRangeMax={setRangeMax}
-              onApply={fetchDistribution}
-            />
+            <div className="stack">
+              <EstimatedFees />
+              <LiquidityPriceRange
+                rangeMin={rangeMin}
+                rangeMax={rangeMax}
+                setRangeMin={setRangeMin}
+                setRangeMax={setRangeMax}
+                onApply={fetchDistribution}
+                bounds={rangeBounds}
+                timeframeDays={timeframeDays}
+                setTimeframeDays={setTimeframeDays}
+              />
+              <DepositAmount
+                token0={token0}
+                token1={token1}
+                depositUsd={depositUsd}
+                setDepositUsd={setDepositUsd}
+                allocateData={allocateData}
+                loading={allocateLoading}
+                error={allocateError}
+                onCalculate={fetchAllocate}
+              />
+            </div>
+            <div className="stack">
+              <LiquidityChart
+                apiData={distributionData}
+                loading={distributionLoading}
+                error={distributionError}
+                rangeMin={rangeMin}
+                rangeMax={rangeMax}
+                setRangeMin={setRangeMin}
+                setRangeMax={setRangeMax}
+                onApply={fetchDistribution}
+              />
+              <PoolPriceChart
+                apiData={poolPriceData}
+                loading={poolPriceLoading}
+                error={poolPriceError}
+                rangeMin={rangeMin}
+                rangeMax={rangeMax}
+                token0={token0}
+                token1={token1}
+              />
+            </div>
           </>
         );
       }
