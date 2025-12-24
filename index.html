@@ -1131,7 +1131,25 @@
         );
       }
 
-      function EstimatedFees() {
+      function EstimatedFees({ data, loading, error }) {
+        const estimated24h = Number(data?.estimated_fees_24h);
+        const monthlyValue = Number(data?.monthly?.value);
+        const monthlyPercent = Number(data?.monthly?.percent);
+        const yearlyValue = Number(data?.yearly?.value);
+        const yearlyApr = Number(data?.yearly?.apr);
+        const display24h = Number.isFinite(estimated24h) ? estimated24h : 0;
+        const displayMonthlyValue = Number.isFinite(monthlyValue) ? monthlyValue : 0;
+        const displayMonthlyPercent = Number.isFinite(monthlyPercent) ? monthlyPercent : 0;
+        const displayYearlyValue = Number.isFinite(yearlyValue) ? yearlyValue : 0;
+        const displayYearlyApr = Number.isFinite(yearlyApr) ? yearlyApr : 0;
+        const aprPercent = displayYearlyApr * 100;
+        const statusLabel = loading ? "Calculating..." : error ? "Error" : "";
+        const chipLabel = loading
+          ? "Calculating..."
+          : error
+            ? "Error"
+            : `Fee APR ${aprPercent.toFixed(2)}%`;
+
         return (
           <div className="card fees-card">
             <div className="fees-header">
@@ -1139,24 +1157,23 @@
                 <div className="fees-title">
                   Estimated Fees <span>(24h)</span>
                 </div>
-                <div className="fees-value">$3.744</div>
+                <div className="fees-value">${display24h.toFixed(2)}</div>
               </div>
-              <div className="fees-chip">Fee APR 12.92%</div>
+              <div className="fees-chip">{chipLabel}</div>
             </div>
             <div className="fees-rows">
               <div className="fees-row">
-                <span>Volume (24h)</span>
-                <strong>$9.05M</strong>
+                <span>Monthly</span>
+                <strong>
+                  ${displayMonthlyValue.toFixed(2)} ({displayMonthlyPercent.toFixed(2)}%)
+                </strong>
               </div>
               <div className="fees-row">
-                <span>Fees (24h)</span>
-                <strong>$3.78</strong>
-              </div>
-              <div className="fees-row">
-                <span>Pool APR</span>
-                <strong>12.92%</strong>
+                <span>Yearly</span>
+                <strong>${displayYearlyValue.toFixed(2)}</strong>
               </div>
             </div>
+            {statusLabel ? <div className="subtitle">{statusLabel}</div> : null}
             <button className="action-button ghost-button" type="button">
               Simulate Position Performance
             </button>
@@ -1532,6 +1549,9 @@
         const [poolPriceData, setPoolPriceData] = useState(null);
         const [poolPriceLoading, setPoolPriceLoading] = useState(false);
         const [poolPriceError, setPoolPriceError] = useState("");
+        const [estimatedFeesData, setEstimatedFeesData] = useState(null);
+        const [estimatedFeesLoading, setEstimatedFeesLoading] = useState(false);
+        const [estimatedFeesError, setEstimatedFeesError] = useState("");
         const [allocateData, setAllocateData] = useState(null);
         const [allocateLoading, setAllocateLoading] = useState(false);
         const [allocateError, setAllocateError] = useState("");
@@ -1540,10 +1560,12 @@
         const [depositUsd, setDepositUsd] = useState("1000");
         const [timeframeDays, setTimeframeDays] = useState(14);
         const allocateDebounceRef = useRef(null);
+        const estimatedFeesDebounceRef = useRef(null);
         const hasMountedRef = useRef(false);
 
         const apiUrl = "http://localhost:8000/api/liquidity-distribution";
         const poolPriceUrl = "http://localhost:8000/api/pool-price";
+        const estimatedFeesUrl = "http://localhost:8000/api/estimated-fees";
         const allocateUrl = "http://localhost:8000/v1/allocate";
         const token = "dev-token";
 
@@ -1643,6 +1665,55 @@
           }
         };
 
+        const fetchEstimatedFees = async () => {
+          setEstimatedFeesLoading(true);
+          setEstimatedFeesError("");
+          try {
+            const parsedDeposit = Number(depositUsd);
+            const parsedMin = Number(rangeMin);
+            const parsedMax = Number(rangeMax);
+            const parsedDays = Number(timeframeDays);
+            if (
+              !Number.isFinite(parsedDeposit) ||
+              !Number.isFinite(parsedMin) ||
+              !Number.isFinite(parsedMax) ||
+              !Number.isFinite(parsedDays)
+            ) {
+              return;
+            }
+            const amount0 = allocateData ? Number(allocateData.amount_token0) : 0;
+            const amount1 = allocateData ? Number(allocateData.amount_token1) : 0;
+            const payload = {
+              pool_id: REQUEST.poolId,
+              days: parsedDays,
+              min_price: parsedMin,
+              max_price: parsedMax,
+              deposit_usd: parsedDeposit,
+              amount_token0: Number.isFinite(amount0) ? amount0 : 0,
+              amount_token1: Number.isFinite(amount1) ? amount1 : 0,
+            };
+            const response = await fetch(estimatedFeesUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify(payload),
+            });
+            if (!response.ok) {
+              const message = await response.text();
+              throw new Error(message || "API error");
+            }
+            const data = await response.json();
+            setEstimatedFeesData(data);
+          } catch (err) {
+            setEstimatedFeesError(err.message || "Failed to load data.");
+            setEstimatedFeesData(null);
+          } finally {
+            setEstimatedFeesLoading(false);
+          }
+        };
+
         useEffect(() => {
           fetchDistribution();
           fetchAllocate();
@@ -1673,6 +1744,35 @@
           };
         }, [depositUsd]);
 
+        useEffect(() => {
+          if (!allocateData) {
+            return;
+          }
+          if (estimatedFeesDebounceRef.current) {
+            clearTimeout(estimatedFeesDebounceRef.current);
+          }
+          estimatedFeesDebounceRef.current = setTimeout(() => {
+            const parsedDeposit = Number(depositUsd);
+            const parsedMin = Number(rangeMin);
+            const parsedMax = Number(rangeMax);
+            const parsedDays = Number(timeframeDays);
+            if (
+              !Number.isFinite(parsedDeposit) ||
+              !Number.isFinite(parsedMin) ||
+              !Number.isFinite(parsedMax) ||
+              !Number.isFinite(parsedDays)
+            ) {
+              return;
+            }
+            fetchEstimatedFees();
+          }, 400);
+          return () => {
+            if (estimatedFeesDebounceRef.current) {
+              clearTimeout(estimatedFeesDebounceRef.current);
+            }
+          };
+        }, [allocateData, depositUsd, rangeMin, rangeMax, timeframeDays]);
+
         const token0 = distributionData?.pool?.token0 || allocateData?.token0_symbol || "TOKEN0";
         const token1 = distributionData?.pool?.token1 || allocateData?.token1_symbol || "TOKEN1";
         const feeTier = distributionData?.pool?.fee_tier ?? allocateData?.taxa ?? null;
@@ -1690,7 +1790,11 @@
         return (
           <>
             <div className="stack">
-              <EstimatedFees />
+              <EstimatedFees
+                data={estimatedFeesData}
+                loading={estimatedFeesLoading}
+                error={estimatedFeesError}
+              />
               <LiquidityPriceRange
                 rangeMin={rangeMin}
                 rangeMax={rangeMax}
