@@ -4,6 +4,7 @@ import type {
   AllocateResponse,
   EstimatedFeesResponse,
   LiquidityDistributionResponse,
+  MatchTicksResponse,
   PoolDetail,
   PoolPriceResponse,
 } from '../services/api'
@@ -13,6 +14,7 @@ import {
   postAllocate,
   postEstimatedFees,
   postLiquidityDistribution,
+  postMatchTicks,
 } from '../services/api'
 import './PoolDetailPage.css'
 
@@ -27,9 +29,6 @@ type LiquidityChartProps = {
   error: string
   rangeMin: string
   rangeMax: string
-  setRangeMin: (value: string) => void
-  setRangeMax: (value: string) => void
-  onApply: () => void
   currentTick: number
   tickRange: number
 }
@@ -42,6 +41,7 @@ type PoolPriceChartProps = {
   rangeMax: string
   token0: string
   token1: string
+  currentPriceOverride?: number | null
 }
 
 type EstimatedFeesProps = {
@@ -61,6 +61,8 @@ type LiquidityPriceRangeProps = {
   feeTier: number | null
   token0Decimals: number | null
   token1Decimals: number | null
+  poolId: number | null
+  onMatchTicks?: (data: MatchTicksResponse, matchedMin: string, matchedMax: string) => void
 }
 
 type DepositAmountProps = {
@@ -94,9 +96,6 @@ function LiquidityChart({
   error,
   rangeMin,
   rangeMax,
-  setRangeMin,
-  setRangeMax,
-  onApply,
   currentTick,
   tickRange,
 }: LiquidityChartProps) {
@@ -183,8 +182,6 @@ function LiquidityChart({
       ? renderPoints[hoverIndex]
       : renderPoints[defaultIndex ?? 0]
 
-  const minTick = Math.round(viewMinTick)
-  const maxTick = Math.round(viewMaxTick)
   const maxLiquidity = renderPoints.length
     ? Math.max(...renderPoints.map((point) => point.liquidityValue))
     : 0
@@ -195,13 +192,17 @@ function LiquidityChart({
   const chartWidth = width - padding * 2
   const chartHeight = height - padding * 2
   const barWidth = renderPoints.length ? chartWidth / renderPoints.length : chartWidth
+  const barThickness = Math.max(1, barWidth * 0.45)
+  const spacingFactor = 0.725
+  const scaledChartWidth = chartWidth * spacingFactor
+  const xOffset = padding + (chartWidth - scaledChartWidth) / 2
 
   const scaleX = (tick: number) => {
     if (viewMaxTick === viewMinTick) {
-      return padding
+      return xOffset
     }
     const ratio = (tick - viewMinTick) / (viewMaxTick - viewMinTick)
-    return padding + ratio * chartWidth
+    return xOffset + ratio * scaledChartWidth
   }
 
   const handleMouseMove = (event: React.MouseEvent<SVGSVGElement>) => {
@@ -216,7 +217,7 @@ function LiquidityChart({
     }
     const x = Math.min(innerWidth, Math.max(0, event.clientX - rect.left - paddingPx))
     const ratio = innerWidth > 0 ? x / innerWidth : 0
-    setHoverX(padding + ratio * chartWidth)
+    setHoverX(xOffset + ratio * scaledChartWidth)
     if (isPanning && panStartRef.current) {
       const deltaX = x - panStartRef.current.x
       const deltaRatio = deltaX / innerWidth
@@ -348,25 +349,6 @@ function LiquidityChart({
             <div className="price">
               1 {token0} = {hoverPoint ? hoverPoint.price.toFixed(2) : '--'} {token1}
             </div>
-            <div className="range-controls">
-              <label>
-                Range min
-                <input
-                  value={rangeMin}
-                  onChange={(event) => setRangeMin(event.target.value)}
-                />
-              </label>
-              <label>
-                Range max
-                <input
-                  value={rangeMax}
-                  onChange={(event) => setRangeMax(event.target.value)}
-                />
-              </label>
-              <button type="button" onClick={onApply}>
-                Apply
-              </button>
-            </div>
           </div>
         </div>
         <div className="subtitle">{loading ? 'Loading...' : error ? 'API error' : ''}</div>
@@ -391,16 +373,22 @@ function LiquidityChart({
           {renderPoints.map((point, idx) => {
             const heightScale = maxLiquidity > 0 ? point.liquidityValue / maxLiquidity : 0
             const barHeight = heightScale * chartHeight
-            const x = scaleX(point.tick) - barWidth / 2
+            const x = scaleX(point.tick) - barThickness / 2
             const y = height - padding - barHeight
+            const barColor =
+              point.tick < currentTickValue
+                ? 'var(--bar-left)'
+                : point.tick > currentTickValue
+                  ? 'var(--bar-right)'
+                  : 'var(--price-current)'
             return (
               <rect
                 key={`${point.tick}-${idx}`}
                 x={x}
                 y={y}
-                width={Math.max(1, barWidth * 0.9)}
+                width={barThickness}
                 height={barHeight}
-                fill="var(--bar)"
+                fill={barColor}
                 opacity={hoverIndex === idx ? 0.9 : 0.6}
               />
             )
@@ -416,47 +404,34 @@ function LiquidityChart({
             />
           ) : null}
           {hasRange && renderPoints.length ? (
-            <line
-              x1={scaleX(clampTick(findClosestTick(rangeLow ?? 0)))}
-              x2={scaleX(clampTick(findClosestTick(rangeLow ?? 0)))}
-              y1={padding}
-              y2={height - padding}
-              stroke="var(--range)"
-              strokeWidth="2"
+            <rect
+              x={scaleX(clampTick(findClosestTick(rangeLow ?? 0))) - barThickness / 2}
+              y={padding}
+              width={barThickness}
+              height={height - padding * 2}
+              fill="var(--range)"
+              opacity={0.9}
             />
           ) : null}
           {hasRange && renderPoints.length ? (
-            <line
-              x1={scaleX(clampTick(findClosestTick(rangeHigh ?? 0)))}
-              x2={scaleX(clampTick(findClosestTick(rangeHigh ?? 0)))}
-              y1={padding}
-              y2={height - padding}
-              stroke="var(--range)"
-              strokeWidth="2"
+            <rect
+              x={scaleX(clampTick(findClosestTick(rangeHigh ?? 0))) - barThickness / 2}
+              y={padding}
+              width={barThickness}
+              height={height - padding * 2}
+              fill="var(--range)"
+              opacity={0.9}
             />
           ) : null}
-          <line
-            x1={scaleX(clampTick(currentTickValue))}
-            x2={scaleX(clampTick(currentTickValue))}
-            y1={padding}
-            y2={height - padding}
-            stroke="var(--current)"
-            strokeWidth="1"
+          <rect
+            x={scaleX(clampTick(currentTickValue)) - barThickness / 2}
+            y={padding}
+            width={barThickness}
+            height={height - padding * 2}
+            fill="var(--price-current)"
+            opacity={0.85}
           />
         </svg>
-        {hoverPoint ? (
-          <div className="tooltip" style={{ left: `${scaleX(hoverPoint.tick)}px` }}>
-            <div className="label">
-              1 {token0} = {hoverPoint.price.toFixed(2)} {token1}
-            </div>
-          </div>
-        ) : null}
-      </div>
-
-      <div className="axis-labels">
-        <span>{minTick}</span>
-        <span>{points.length ? 'Distribution' : 'No data'}</span>
-        <span>{maxTick}</span>
       </div>
     </div>
   )
@@ -470,6 +445,7 @@ function PoolPriceChart({
   rangeMax,
   token0,
   token1,
+  currentPriceOverride,
 }: PoolPriceChartProps) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
   const [hoverX, setHoverX] = useState<number | null>(null)
@@ -500,13 +476,16 @@ function PoolPriceChart({
   const statMin = Number(stats.min)
   const statMax = Number(stats.max)
   const statAvg = Number(stats.avg)
-  const statPrice = Number(stats.price)
+  const statPriceRaw = Number(stats.price)
+  const effectivePrice = Number.isFinite(currentPriceOverride)
+    ? Number(currentPriceOverride)
+    : statPriceRaw
 
   const minInput = Number(rangeMin)
   const maxInput = Number(rangeMax)
 
   const seriesPrices = points.map((point) => point.price)
-  const fallbackPrices = [statPrice, minInput, maxInput].filter((value) =>
+  const fallbackPrices = [effectivePrice, minInput, maxInput].filter((value) =>
     Number.isFinite(value),
   )
   const pricesForScale = seriesPrices.length ? seriesPrices : fallbackPrices
@@ -807,9 +786,8 @@ function PoolPriceChart({
     <div className="card pool-price-card">
       <div className="chart-header">
         <div>
-          <div className="price-title">Pool Price</div>
-          <div className="subtitle">
-            1 {token0} = {Number.isFinite(statPrice) ? statPrice.toFixed(2) : '--'} {token1}
+          <div className="price-title">
+            {token0} / {token1} Pool Price
           </div>
         </div>
         <div className="subtitle">{loading ? 'Loading...' : error ? 'API error' : ''}</div>
@@ -821,7 +799,7 @@ function PoolPriceChart({
         </div>
         <div className="stat-card">
           <span className="stat-label">PRICE</span>
-          <span className="stat-value">{formatStat(statPrice)}</span>
+          <span className="stat-value">{formatStat(effectivePrice)}</span>
         </div>
         <div className="stat-card">
           <span className="stat-label">AVG</span>
@@ -874,12 +852,12 @@ function PoolPriceChart({
               strokeWidth="1.5"
             />
           ) : null}
-          {Number.isFinite(statPrice) ? (
+          {Number.isFinite(effectivePrice) ? (
             <line
               x1={padding}
               x2={width - padding}
-              y1={clampY(scaleY(statPrice))}
-              y2={clampY(scaleY(statPrice))}
+              y1={clampY(scaleY(effectivePrice))}
+              y2={clampY(scaleY(effectivePrice))}
               className="price-line--current"
               strokeWidth="1.5"
             />
@@ -933,11 +911,11 @@ function EstimatedFees({ data, loading, error }: EstimatedFeesProps) {
   const displayYearlyValue = Number.isFinite(yearlyValue) ? yearlyValue : 0
   const displayYearlyApr = Number.isFinite(yearlyApr) ? yearlyApr : 0
   const aprPercent = displayYearlyApr * 100
-  const statusLabel = loading ? 'Calculating...' : error ? 'Error' : ''
-  const chipLabel = loading
-    ? 'Calculating...'
-    : error
-      ? 'Error'
+  const statusLabel = error ? 'Error' : ''
+  const chipLabel = error
+    ? 'Error'
+    : loading
+      ? 'Fee APR --'
       : `Fee APR ${aprPercent.toFixed(2)}%`
 
   return (
@@ -982,7 +960,11 @@ function LiquidityPriceRange({
   feeTier,
   token0Decimals,
   token1Decimals,
+  poolId,
+  onMatchTicks,
 }: LiquidityPriceRangeProps) {
+  const [isFullRange, setIsFullRange] = useState(false)
+  const [isMatching, setIsMatching] = useState(false)
   const fallbackFeeTier = 3000
   const fallbackToken0Decimals = 18
   const fallbackToken1Decimals = 6
@@ -1087,6 +1069,91 @@ function LiquidityPriceRange({
     setter(formatRangeValue(clamped))
   }
 
+  const stepRangeValue = (value: string, direction: -1 | 1, setter: (next: string) => void) => {
+    const parsed = Number(value)
+    if (!Number.isFinite(parsed)) {
+      return
+    }
+    const adjusted = parsed / decimalAdjust
+    if (!Number.isFinite(adjusted) || adjusted <= 0) {
+      return
+    }
+    const rawTick = Math.log(adjusted) / Math.log(1.0001)
+    if (!Number.isFinite(rawTick)) {
+      return
+    }
+    const baseTick =
+      direction > 0
+        ? Math.floor(rawTick / tickSpacing) * tickSpacing
+        : Math.ceil(rawTick / tickSpacing) * tickSpacing
+    const nextTick = baseTick + direction * tickSpacing
+    const clampedTick = Math.min(maxTick, Math.max(minTick, nextTick))
+    const nextPrice = Math.pow(1.0001, clampedTick) * decimalAdjust
+    if (!Number.isFinite(nextPrice)) {
+      return
+    }
+    const clamped =
+      hasBounds && Number.isFinite(minBound) && Number.isFinite(maxBound)
+        ? Math.min(maxBound as number, Math.max(minBound as number, nextPrice))
+        : nextPrice
+    setter(formatRangeValue(clamped))
+  }
+
+  const toggleFullRange = (nextValue: boolean) => {
+    setIsFullRange(nextValue)
+    if (nextValue && hasBounds && Number.isFinite(minBound) && Number.isFinite(maxBound)) {
+      setRangeMin(formatRangeValue(minBound))
+      setRangeMax(formatRangeValue(maxBound))
+    }
+  }
+
+  useEffect(() => {
+    if (!isFullRange || !hasBounds) {
+      return
+    }
+    const minValue = formatRangeValue(minBound as number)
+    const maxValue = formatRangeValue(maxBound as number)
+    if (rangeMin !== minValue) {
+      setRangeMin(minValue)
+    }
+    if (rangeMax !== maxValue) {
+      setRangeMax(maxValue)
+    }
+  }, [hasBounds, isFullRange, maxBound, minBound, rangeMax, rangeMin, setRangeMax, setRangeMin])
+
+  const handleMatchTicks = async () => {
+    if (!poolId) {
+      return
+    }
+    const parsedMin = Number(rangeMin)
+    const parsedMax = Number(rangeMax)
+    if (!Number.isFinite(parsedMin) || !Number.isFinite(parsedMax)) {
+      return
+    }
+    setIsFullRange(false)
+    setIsMatching(true)
+    try {
+      const response: MatchTicksResponse = await postMatchTicks({
+        pool_id: poolId,
+        min_price: parsedMin,
+        max_price: parsedMax,
+      })
+      const nextMin = Number(response.min_price_matched)
+      const nextMax = Number(response.max_price_matched)
+      const nextMinValue = Number.isFinite(nextMin) ? formatRangeValue(nextMin) : rangeMin
+      const nextMaxValue = Number.isFinite(nextMax) ? formatRangeValue(nextMax) : rangeMax
+      if (Number.isFinite(nextMin)) {
+        setRangeMin(nextMinValue)
+      }
+      if (Number.isFinite(nextMax)) {
+        setRangeMax(nextMaxValue)
+      }
+      onMatchTicks?.(response, nextMinValue, nextMaxValue)
+    } finally {
+      setIsMatching(false)
+    }
+  }
+
   if (hasBounds && Number.isFinite(parsedMin) && Number.isFinite(parsedMax)) {
     const low = Math.min(parsedMin, parsedMax)
     const high = Math.max(parsedMin, parsedMax)
@@ -1127,12 +1194,24 @@ function LiquidityPriceRange({
           <div className="range-subtitle">Suggested range for balanced exposure</div>
         </div>
         <div className="range-badges">
-          <button className="chip is-active" type="button">
-            Most Ticks
+          <button
+            className="chip is-active match-ticks"
+            type="button"
+            onClick={handleMatchTicks}
+            disabled={!poolId || !hasBounds || isMatching}
+            title="Match ticks"
+          >
+            Match Ticks
           </button>
-          <button className="chip" type="button">
-            Full Range
-          </button>
+          <label className={`chip chip-toggle${!hasBounds ? ' is-disabled' : ''}`}>
+            <input
+              type="checkbox"
+              checked={isFullRange}
+              onChange={(event) => toggleFullRange(event.target.checked)}
+              disabled={!hasBounds}
+            />
+            <span>Full Range</span>
+          </label>
         </div>
       </div>
       <div className="range-meta">
@@ -1162,29 +1241,79 @@ function LiquidityPriceRange({
       <div className="range-inputs">
         <label>
           Min Price
-          <input
-            value={rangeMin}
-            onChange={(event) => setRangeMin(event.target.value)}
-            onBlur={(event) => commitRangeValue(event.target.value, true, setRangeMin)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.currentTarget.blur()
-              }
-            }}
-          />
+          <div className="range-input-control">
+            <button
+              type="button"
+              className="range-step"
+              onClick={() => stepRangeValue(rangeMin, -1, setRangeMin)}
+              disabled={!hasBounds}
+              aria-label="Decrease min price"
+            >
+              -
+            </button>
+            <input
+              value={rangeMin}
+              onChange={(event) => {
+                if (isFullRange) {
+                  setIsFullRange(false)
+                }
+                setRangeMin(event.target.value)
+              }}
+              onBlur={(event) => commitRangeValue(event.target.value, true, setRangeMin)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.currentTarget.blur()
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="range-step"
+              onClick={() => stepRangeValue(rangeMin, 1, setRangeMin)}
+              disabled={!hasBounds}
+              aria-label="Increase min price"
+            >
+              +
+            </button>
+          </div>
         </label>
         <label>
           Max Price
-          <input
-            value={rangeMax}
-            onChange={(event) => setRangeMax(event.target.value)}
-            onBlur={(event) => commitRangeValue(event.target.value, false, setRangeMax)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.currentTarget.blur()
-              }
-            }}
-          />
+          <div className="range-input-control">
+            <button
+              type="button"
+              className="range-step"
+              onClick={() => stepRangeValue(rangeMax, -1, setRangeMax)}
+              disabled={!hasBounds}
+              aria-label="Decrease max price"
+            >
+              -
+            </button>
+            <input
+              value={rangeMax}
+              onChange={(event) => {
+                if (isFullRange) {
+                  setIsFullRange(false)
+                }
+                setRangeMax(event.target.value)
+              }}
+              onBlur={(event) => commitRangeValue(event.target.value, false, setRangeMax)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.currentTarget.blur()
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="range-step"
+              onClick={() => stepRangeValue(rangeMax, 1, setRangeMax)}
+              disabled={!hasBounds}
+              aria-label="Increase max price"
+            >
+              +
+            </button>
+          </div>
         </label>
       </div>
       <div className="range-sliders">
@@ -1393,6 +1522,9 @@ function PoolDetailPage() {
   const [allocateLoading, setAllocateLoading] = useState(false)
   const [allocateError, setAllocateError] = useState('')
 
+  const [matchedCurrentPrice, setMatchedCurrentPrice] = useState<number | null>(null)
+  const [matchedRangeKey, setMatchedRangeKey] = useState<string | null>(null)
+
   const [rangeMin, setRangeMin] = useState('2833.5')
   const [rangeMax, setRangeMax] = useState('3242.4')
   const [depositUsd, setDepositUsd] = useState('1000')
@@ -1400,6 +1532,7 @@ function PoolDetailPage() {
 
   const allocateDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const estimatedFeesDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const distributionDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hasMountedRef = useRef(false)
   const snapshotDateRef = useRef(new Date().toISOString().slice(0, 10))
 
@@ -1551,6 +1684,23 @@ function PoolDetailPage() {
   }
 
   useEffect(() => {
+    if (!showPool || !pool) {
+      return
+    }
+    if (distributionDebounceRef.current) {
+      clearTimeout(distributionDebounceRef.current)
+    }
+    distributionDebounceRef.current = setTimeout(() => {
+      fetchDistribution()
+    }, 350)
+    return () => {
+      if (distributionDebounceRef.current) {
+        clearTimeout(distributionDebounceRef.current)
+      }
+    }
+  }, [pool, rangeMax, rangeMin, showPool])
+
+  useEffect(() => {
     if (!hasContext || !normalizedPoolAddress || !network || !Number.isFinite(exchangeId)) {
       return
     }
@@ -1644,12 +1794,31 @@ function PoolDetailPage() {
     }
   }, [allocateData, depositUsd, rangeMin, rangeMax, timeframeDays, pool, showPool])
 
+  useEffect(() => {
+    if (!showPool) {
+      return
+    }
+    const rangeKey = `${rangeMin}|${rangeMax}`
+    if (matchedRangeKey && matchedRangeKey !== rangeKey) {
+      setMatchedCurrentPrice(null)
+      setMatchedRangeKey(null)
+    }
+  }, [matchedRangeKey, rangeMax, rangeMin, showPool])
+
   const pairLabel = useMemo(() => {
     if (!showPool || !pool) {
       return 'Pool details'
     }
     return `${pool.token0_symbol} / ${pool.token1_symbol}`
   }, [pool, showPool])
+
+  const handleMatchTicks = (data: MatchTicksResponse, matchedMin: string, matchedMax: string) => {
+    const currentMatched = Number(data.current_price_matched)
+    if (Number.isFinite(currentMatched)) {
+      setMatchedCurrentPrice(currentMatched)
+    }
+    setMatchedRangeKey(`${matchedMin}|${matchedMax}`)
+  }
 
   return (
     <main className="pool-detail">
@@ -1698,6 +1867,8 @@ function PoolDetailPage() {
               feeTier={feeTier ?? null}
               token0Decimals={token0Decimals ?? null}
               token1Decimals={token1Decimals ?? null}
+              poolId={pool?.id ?? null}
+              onMatchTicks={handleMatchTicks}
             />
             <DepositAmount
               token0={token0Label}
@@ -1716,9 +1887,6 @@ function PoolDetailPage() {
               error={distributionError}
               rangeMin={rangeMin}
               rangeMax={rangeMax}
-              setRangeMin={setRangeMin}
-              setRangeMax={setRangeMax}
-              onApply={fetchDistribution}
               currentTick={0}
               tickRange={6000}
             />
@@ -1730,6 +1898,7 @@ function PoolDetailPage() {
               rangeMax={rangeMax}
               token0={token0Label}
               token1={token1Label}
+              currentPriceOverride={matchedCurrentPrice}
             />
           </div>
         </div>

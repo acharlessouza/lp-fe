@@ -4,6 +4,8 @@
   --chart-bg: rgba(31, 26, 22, 0.08);
   --bar: rgba(231, 111, 81, 0.7);
   --bar-dim: rgba(231, 111, 81, 0.2);
+  --bar-left: rgba(64, 132, 255, 0.8);
+  --bar-right: rgba(132, 92, 255, 0.8);
   --range: rgba(42, 157, 143, 0.9);
   --current: rgba(42, 157, 143, 0.6);
   --price-current: rgba(231, 111, 81, 0.65);
@@ -322,6 +324,28 @@
   background: rgba(42, 157, 143, 0.12);
 }
 
+.match-ticks {
+  cursor: pointer;
+}
+
+.chip-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.chip-toggle input {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--range);
+}
+
+.chip-toggle.is-disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .range-meta {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -399,6 +423,30 @@
   color: var(--ink);
   font-family: inherit;
   font-size: 0.8rem;
+}
+
+.range-input-control {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 32px;
+  gap: 6px;
+  align-items: center;
+}
+
+.range-step {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid rgba(31, 26, 22, 0.12);
+  background: #fff;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.range-step:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .range-slider {
@@ -553,27 +601,29 @@
 .price-stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: 8px;
 }
 
 .stat-card {
-  padding: 10px 12px;
-  border-radius: 12px;
+  padding: 6px 10px;
+  border-radius: 10px;
   background: rgba(31, 26, 22, 0.04);
   border: 1px solid rgba(31, 26, 22, 0.08);
-  display: grid;
-  gap: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .stat-label {
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--muted);
 }
 
 .stat-value {
-  font-size: 1rem;
+  font-size: 0.9rem;
   font-weight: 600;
 }
 

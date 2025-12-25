@@ -156,6 +156,12 @@ export type EstimatedFeesResponse = {
   }
 }
 
+export type MatchTicksResponse = {
+  min_price_matched: number | string
+  max_price_matched: number | string
+  current_price_matched?: number | string
+}
+
 export const getExchanges = (signal?: AbortSignal) =>
   fetchJson<Exchange[]>('/v1/exchanges', { signal })
 
@@ -259,6 +265,20 @@ export const postEstimatedFees = (
   signal?: AbortSignal,
 ) =>
   fetchJson<EstimatedFeesResponse>('/api/estimated-fees', {
+    method: 'POST',
+    body: payload,
+    signal,
+  })
+
+export const postMatchTicks = (
+  payload: {
+    pool_id: number
+    min_price: number
+    max_price: number
+  },
+  signal?: AbortSignal,
+) =>
+  fetchJson<MatchTicksResponse>('/v1/match-ticks', {
     method: 'POST',
     body: payload,
     signal,
