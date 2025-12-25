@@ -1,0 +1,82 @@
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 32px 5vw 0;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.brand-mark {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  background: conic-gradient(from 180deg, #e76f51, #2a9d8f, #f4a261, #e76f51);
+  box-shadow: 0 12px 24px rgba(231, 111, 81, 0.35);
+}
+
+.brand-title {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+  font-family: 'Fraunces', serif;
+}
+
+.brand-subtitle {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.header-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-pill {
+  background: #fff;
+  border: 1px solid rgba(31, 26, 22, 0.1);
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink);
+  box-shadow: var(--shadow-soft);
+}
+
+.not-found {
+  margin: 0 auto;
+  text-align: center;
+  padding: 80px 24px;
+  max-width: 520px;
+}
+
+.not-found h2 {
+  font-size: 2rem;
+  margin-bottom: 12px;
+}
+
+.not-found p {
+  color: var(--muted);
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .app-header {
+    padding: 24px 6vw 0;
+  }
+}
