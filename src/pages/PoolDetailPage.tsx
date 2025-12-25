@@ -55,7 +55,6 @@ type LiquidityPriceRangeProps = {
   rangeMax: string
   setRangeMin: (value: string) => void
   setRangeMax: (value: string) => void
-  onApply: () => void
   bounds: RangeBounds
   timeframeDays: number
   setTimeframeDays: (value: number) => void
@@ -72,7 +71,6 @@ type DepositAmountProps = {
   allocateData: AllocateResponse | null
   loading: boolean
   error: string
-  onCalculate: () => void
 }
 
 const shortAddress = (address: string) => {
@@ -591,7 +589,6 @@ function LiquidityPriceRange({
   rangeMax,
   setRangeMin,
   setRangeMax,
-  onApply,
   bounds,
   timeframeDays,
   setTimeframeDays,
@@ -870,9 +867,6 @@ function LiquidityPriceRange({
         <span>${displayMin.toFixed(2)}</span>
         <span>${displayMax.toFixed(2)}</span>
       </div>
-      <button className="action-button" onClick={onApply} type="button">
-        Apply Range
-      </button>
     </div>
   )
 }
@@ -885,7 +879,6 @@ function DepositAmount({
   allocateData,
   loading,
   error,
-  onCalculate,
 }: DepositAmountProps) {
   const parsedDeposit = Number(depositUsd)
   const totalUsd = Number.isFinite(parsedDeposit) ? parsedDeposit : 0
@@ -910,9 +903,6 @@ function DepositAmount({
           placeholder="1000"
         />
       </div>
-      <button className="action-button" onClick={onCalculate} type="button">
-        Calculate
-      </button>
       <div className="token-rows">
         <div className="token-row">
           <div>
@@ -947,9 +937,51 @@ function PoolDetailPage() {
   const { poolAddress } = useParams<{ poolAddress: string }>()
   const [searchParams] = useSearchParams()
   const network = searchParams.get('network') ?? ''
+  const networkIdParam = searchParams.get('network_id')
+  const exchangeNameParam = searchParams.get('exchange_name')
+  const networkNameParam = searchParams.get('network_name')
+  const token0Param = searchParams.get('token0') ?? ''
+  const token1Param = searchParams.get('token1') ?? ''
+  const token0SymbolParam = searchParams.get('token0_symbol')
+  const token1SymbolParam = searchParams.get('token1_symbol')
   const exchangeIdParam = searchParams.get('exchange_id')
   const exchangeId = exchangeIdParam ? Number(exchangeIdParam) : Number.NaN
   const normalizedPoolAddress = poolAddress ? decodeURIComponent(poolAddress) : ''
+  const backSearch = new URLSearchParams()
+
+  if (exchangeIdParam) {
+    backSearch.set('exchange_id', exchangeIdParam)
+  }
+
+  if (networkIdParam) {
+    backSearch.set('network_id', networkIdParam)
+  }
+
+  if (exchangeNameParam) {
+    backSearch.set('exchange_name', exchangeNameParam)
+  }
+
+  if (networkNameParam) {
+    backSearch.set('network_name', networkNameParam)
+  }
+
+  if (token0Param) {
+    backSearch.set('token0', token0Param)
+  }
+
+  if (token1Param) {
+    backSearch.set('token1', token1Param)
+  }
+
+  if (token0SymbolParam) {
+    backSearch.set('token0_symbol', token0SymbolParam)
+  }
+
+  if (token1SymbolParam) {
+    backSearch.set('token1_symbol', token1SymbolParam)
+  }
+
+  const backHref = backSearch.toString() ? `/simulate?${backSearch.toString()}` : '/simulate'
 
   const [pool, setPool] = useState<PoolDetail | null>(null)
   const [poolKey, setPoolKey] = useState<string | null>(null)
@@ -1236,7 +1268,7 @@ function PoolDetailPage() {
     <main className="pool-detail">
       <header className="pool-detail-header">
         <div>
-          <Link className="back-link" to="/simulate">
+          <Link className="back-link" to={backHref}>
             &larr; Back to pools
           </Link>
           <h1>{pairLabel}</h1>
@@ -1273,7 +1305,6 @@ function PoolDetailPage() {
               rangeMax={rangeMax}
               setRangeMin={setRangeMin}
               setRangeMax={setRangeMax}
-              onApply={fetchDistribution}
               bounds={rangeBounds}
               timeframeDays={timeframeDays}
               setTimeframeDays={setTimeframeDays}
@@ -1289,7 +1320,6 @@ function PoolDetailPage() {
               allocateData={allocateData}
               loading={allocateLoading}
               error={allocateError}
-              onCalculate={fetchAllocate}
             />
           </div>
           <div className="stack">

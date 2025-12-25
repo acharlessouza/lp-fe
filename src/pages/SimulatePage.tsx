@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import type { Exchange, Network, Pool, Token } from '../services/api'
 import { getExchanges, getNetworks, getPools, getTokens } from '../services/api'
 import './SimulatePage.css'
@@ -174,20 +174,38 @@ const poolPairLabel = (
 
 function SimulatePage() {
   const [mode, setMode] = useState<Mode>('pair')
+  const [searchParams] = useSearchParams()
+
+  const exchangeParam = searchParams.get('exchange_id')
+  const networkParam = searchParams.get('network_id')
+  const token0Param = searchParams.get('token0') ?? ''
+  const token1Param = searchParams.get('token1') ?? ''
+  const exchangeValue = exchangeParam ? Number(exchangeParam) : Number.NaN
+  const networkValue = networkParam ? Number(networkParam) : Number.NaN
+  const initialExchangeId = Number.isFinite(exchangeValue) ? exchangeValue : ''
+  const initialNetworkId = Number.isFinite(networkValue) ? networkValue : ''
+  const initialExchangeQuery = searchParams.get('exchange_name') ?? ''
+  const initialNetworkQuery = searchParams.get('network_name') ?? ''
+  const initialToken0Query =
+    searchParams.get('token0_symbol') ?? (token0Param ? shortAddress(token0Param) : '')
+  const initialToken1Query =
+    searchParams.get('token1_symbol') ?? (token1Param ? shortAddress(token1Param) : '')
+  const initialPoolsStatus: LoadStatus =
+    token0Param && token1Param && token0Param !== token1Param ? 'loading' : 'idle'
 
   const [exchanges, setExchanges] = useState<Exchange[]>([])
   const [exchangesStatus, setExchangesStatus] = useState<LoadStatus>('loading')
   const [exchangesError, setExchangesError] = useState('')
 
-  const [exchangeId, setExchangeId] = useState<number | ''>('')
-  const [exchangeQuery, setExchangeQuery] = useState('')
+  const [exchangeId, setExchangeId] = useState<number | ''>(initialExchangeId)
+  const [exchangeQuery, setExchangeQuery] = useState(initialExchangeQuery)
 
   const [networks, setNetworks] = useState<Network[]>([])
   const [networksStatus, setNetworksStatus] = useState<LoadStatus>('idle')
   const [networksError, setNetworksError] = useState('')
 
-  const [networkId, setNetworkId] = useState<number | ''>('')
-  const [networkQuery, setNetworkQuery] = useState('')
+  const [networkId, setNetworkId] = useState<number | ''>(initialNetworkId)
+  const [networkQuery, setNetworkQuery] = useState(initialNetworkQuery)
 
   const [tokens, setTokens] = useState<Token[]>([])
   const [tokensStatus, setTokensStatus] = useState<LoadStatus>('idle')
@@ -196,13 +214,13 @@ function SimulatePage() {
   const [pairTokensStatus, setPairTokensStatus] = useState<LoadStatus>('idle')
   const [pairTokensError, setPairTokensError] = useState('')
 
-  const [token0, setToken0] = useState('')
-  const [token1, setToken1] = useState('')
-  const [token0Query, setToken0Query] = useState('')
-  const [token1Query, setToken1Query] = useState('')
+  const [token0, setToken0] = useState(token0Param)
+  const [token1, setToken1] = useState(token1Param)
+  const [token0Query, setToken0Query] = useState(initialToken0Query)
+  const [token1Query, setToken1Query] = useState(initialToken1Query)
 
   const [pools, setPools] = useState<Pool[]>([])
-  const [poolsStatus, setPoolsStatus] = useState<LoadStatus>('idle')
+  const [poolsStatus, setPoolsStatus] = useState<LoadStatus>(initialPoolsStatus)
   const [poolsError, setPoolsError] = useState('')
 
   const sameToken = token0 !== '' && token0 === token1
@@ -285,11 +303,42 @@ function SimulatePage() {
     if (!networkParam) {
       return ''
     }
-    return new URLSearchParams({
+    const params = new URLSearchParams({
       exchange_id: String(exchangeId),
       network: networkParam,
-    }).toString()
-  }, [exchangeId, networkId, selectedNetwork])
+    })
+    if (networkId) {
+      params.set('network_id', String(networkId))
+    }
+    if (token0) {
+      params.set('token0', token0)
+    }
+    if (token1) {
+      params.set('token1', token1)
+    }
+    if (selectedExchange?.name) {
+      params.set('exchange_name', selectedExchange.name)
+    }
+    if (selectedNetwork?.name) {
+      params.set('network_name', selectedNetwork.name)
+    }
+    if (selectedToken0) {
+      params.set('token0_symbol', tokenOptionLabel(selectedToken0))
+    }
+    if (selectedToken1) {
+      params.set('token1_symbol', tokenOptionLabel(selectedToken1))
+    }
+    return params.toString()
+  }, [
+    exchangeId,
+    networkId,
+    selectedExchange,
+    selectedNetwork,
+    selectedToken0,
+    selectedToken1,
+    token0,
+    token1,
+  ])
 
   const resolvePoolAddress = (pool: Pool) =>
     pool.address ?? (pool as { pool_address?: string }).pool_address ?? ''
