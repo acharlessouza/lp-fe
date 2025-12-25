@@ -143,6 +143,19 @@
   position: relative;
 }
 
+.liquidity-chart-svg {
+  cursor: grab;
+}
+
+.liquidity-chart-svg.is-panning {
+  cursor: grabbing;
+}
+
+.liquidity-hover-line {
+  stroke: rgba(31, 26, 22, 0.35);
+  opacity: 0.85;
+}
+
 .range-controls {
   display: flex;
   flex-wrap: wrap;
@@ -569,6 +582,14 @@
   margin-top: 8px;
 }
 
+.price-chart-svg {
+  cursor: grab;
+}
+
+.price-chart-svg.is-panning {
+  cursor: grabbing;
+}
+
 .price-line--min,
 .price-line--max {
   stroke: var(--range);
@@ -582,12 +603,32 @@
   opacity: 0.8;
 }
 
+.price-hover-line {
+  stroke: rgba(31, 26, 22, 0.45);
+  opacity: 0.9;
+}
+
 .price-axis {
-  display: flex;
-  justify-content: space-between;
+  position: relative;
+  height: 18px;
   font-size: 0.75rem;
   color: var(--muted);
   margin-top: 8px;
+}
+
+.price-axis-label {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.price-axis-label--start {
+  transform: translateX(0);
+}
+
+.price-axis-label--end {
+  transform: translateX(-100%);
 }
 
 @media (max-width: 960px) {

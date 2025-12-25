@@ -101,6 +101,12 @@ function LiquidityChart({
   tickRange,
 }: LiquidityChartProps) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
+  const [hoverX, setHoverX] = useState<number | null>(null)
+  const [zoomRangeTicks, setZoomRangeTicks] = useState<number | null>(null)
+  const [zoomCenterTick, setZoomCenterTick] = useState<number | null>(null)
+  const [isPanning, setIsPanning] = useState(false)
+  const panStartRef = useRef<{ x: number; center: number; range: number } | null>(null)
+  const svgRef = useRef<SVGSVGElement | null>(null)
 
   const points = useMemo(() => {
     if (!apiData?.data?.length) {
@@ -125,13 +131,44 @@ function LiquidityChart({
   const rangeLow = hasRange ? Math.min(rangeMinValue, rangeMaxValue) : null
   const rangeHigh = hasRange ? Math.max(rangeMinValue, rangeMaxValue) : null
 
-  const defaultIndex = useMemo(() => {
+  const dataMinTick = points.length ? points[0].tick : currentTickValue - tickRange
+  const dataMaxTick = points.length
+    ? points[points.length - 1].tick
+    : currentTickValue + tickRange
+  const dataRange = Math.max(1, dataMaxTick - dataMinTick)
+  const minZoomRange = Math.min(dataRange, 200)
+  const currentRange = Math.min(
+    dataRange,
+    Math.max(minZoomRange, zoomRangeTicks ?? dataRange),
+  )
+  const center = zoomCenterTick ?? (dataMinTick + dataMaxTick) / 2
+  let viewMinTick = center - currentRange / 2
+  let viewMaxTick = center + currentRange / 2
+  if (viewMinTick < dataMinTick) {
+    viewMinTick = dataMinTick
+    viewMaxTick = dataMinTick + currentRange
+  }
+  if (viewMaxTick > dataMaxTick) {
+    viewMaxTick = dataMaxTick
+    viewMinTick = dataMaxTick - currentRange
+  }
+
+  const pointsInView = useMemo(() => {
     if (!points.length) {
+      return []
+    }
+    return points.filter((point) => point.tick >= viewMinTick && point.tick <= viewMaxTick)
+  }, [points, viewMaxTick, viewMinTick])
+
+  const renderPoints = pointsInView.length >= 2 ? pointsInView : points
+
+  const defaultIndex = useMemo(() => {
+    if (!renderPoints.length) {
       return null
     }
     let bestIndex = 0
-    let bestDistance = Math.abs(points[0].tick - currentTickValue)
-    points.forEach((point, idx) => {
+    let bestDistance = Math.abs(renderPoints[0].tick - currentTickValue)
+    renderPoints.forEach((point, idx) => {
       const distance = Math.abs(point.tick - currentTickValue)
       if (distance < bestDistance) {
         bestDistance = distance
@@ -139,17 +176,17 @@ function LiquidityChart({
       }
     })
     return bestIndex
-  }, [points, currentTickValue])
+  }, [renderPoints, currentTickValue])
 
   const hoverPoint =
-    hoverIndex !== null && points[hoverIndex] ? points[hoverIndex] : points[defaultIndex ?? 0]
+    hoverIndex !== null && renderPoints[hoverIndex]
+      ? renderPoints[hoverIndex]
+      : renderPoints[defaultIndex ?? 0]
 
-  const minTick = points.length ? points[0].tick : currentTickValue - tickRange
-  const maxTick = points.length
-    ? points[points.length - 1].tick
-    : currentTickValue + tickRange
-  const maxLiquidity = points.length
-    ? Math.max(...points.map((point) => point.liquidityValue))
+  const minTick = Math.round(viewMinTick)
+  const maxTick = Math.round(viewMaxTick)
+  const maxLiquidity = renderPoints.length
+    ? Math.max(...renderPoints.map((point) => point.liquidityValue))
     : 0
 
   const width = 820
@@ -157,13 +194,13 @@ function LiquidityChart({
   const padding = 24
   const chartWidth = width - padding * 2
   const chartHeight = height - padding * 2
-  const barWidth = points.length ? chartWidth / points.length : chartWidth
+  const barWidth = renderPoints.length ? chartWidth / renderPoints.length : chartWidth
 
   const scaleX = (tick: number) => {
-    if (maxTick === minTick) {
+    if (viewMaxTick === viewMinTick) {
       return padding
     }
-    const ratio = (tick - minTick) / (maxTick - minTick)
+    const ratio = (tick - viewMinTick) / (viewMaxTick - viewMinTick)
     return padding + ratio * chartWidth
   }
 
@@ -174,10 +211,119 @@ function LiquidityChart({
     const rect = event.currentTarget.getBoundingClientRect()
     const paddingPx = (padding / width) * rect.width
     const innerWidth = rect.width - paddingPx * 2
+    if (innerWidth <= 0) {
+      return
+    }
     const x = Math.min(innerWidth, Math.max(0, event.clientX - rect.left - paddingPx))
-    const idx = Math.round((x / innerWidth) * (points.length - 1))
-    setHoverIndex(idx)
+    const ratio = innerWidth > 0 ? x / innerWidth : 0
+    setHoverX(padding + ratio * chartWidth)
+    if (isPanning && panStartRef.current) {
+      const deltaX = x - panStartRef.current.x
+      const deltaRatio = deltaX / innerWidth
+      const deltaTick = deltaRatio * panStartRef.current.range
+      const halfRange = panStartRef.current.range / 2
+      let nextCenter = panStartRef.current.center - deltaTick
+      if (nextCenter - halfRange < dataMinTick) {
+        nextCenter = dataMinTick + halfRange
+      }
+      if (nextCenter + halfRange > dataMaxTick) {
+        nextCenter = dataMaxTick - halfRange
+      }
+      setZoomRangeTicks(panStartRef.current.range)
+      setZoomCenterTick(nextCenter)
+      return
+    }
+    const hoverTick = viewMinTick + ratio * (viewMaxTick - viewMinTick)
+    const candidates = renderPoints.length ? renderPoints : points
+    let closestIndex = 0
+    let bestDistance = Math.abs(candidates[0].tick - hoverTick)
+    candidates.forEach((point, idx) => {
+      const distance = Math.abs(point.tick - hoverTick)
+      if (distance < bestDistance) {
+        bestDistance = distance
+        closestIndex = idx
+      }
+    })
+    setHoverIndex(closestIndex)
   }
+
+  const handleMouseDown = (event: React.MouseEvent<SVGSVGElement>) => {
+    if (event.button !== 0 || !points.length) {
+      return
+    }
+    event.preventDefault()
+    const rect = event.currentTarget.getBoundingClientRect()
+    const paddingPx = (padding / width) * rect.width
+    const innerWidth = rect.width - paddingPx * 2
+    if (innerWidth <= 0) {
+      return
+    }
+    const x = Math.min(innerWidth, Math.max(0, event.clientX - rect.left - paddingPx))
+    const centerPoint = viewMinTick + (viewMaxTick - viewMinTick) / 2
+    panStartRef.current = {
+      x,
+      center: centerPoint,
+      range: viewMaxTick - viewMinTick,
+    }
+    setIsPanning(true)
+  }
+
+  const handleMouseUp = () => {
+    setIsPanning(false)
+    panStartRef.current = null
+  }
+
+  useEffect(() => {
+    const element = svgRef.current
+    if (!element) {
+      return
+    }
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault()
+      event.stopPropagation()
+      if (!points.length) {
+        return
+      }
+      const rect = element.getBoundingClientRect()
+      const paddingPx = (padding / width) * rect.width
+      const innerWidth = rect.width - paddingPx * 2
+      if (innerWidth <= 0) {
+        return
+      }
+      const x = Math.min(innerWidth, Math.max(0, event.clientX - rect.left - paddingPx))
+      const ratio = innerWidth > 0 ? x / innerWidth : 0
+      const zoomFactor = event.deltaY < 0 ? 0.85 : 1.15
+      const nextRangeUnclamped = (viewMaxTick - viewMinTick) * zoomFactor
+      const nextRange = Math.max(minZoomRange, Math.min(dataRange, nextRangeUnclamped))
+      const anchorTick = viewMinTick + ratio * (viewMaxTick - viewMinTick)
+      let nextMin = anchorTick - ratio * nextRange
+      let nextMax = nextMin + nextRange
+      if (nextMin < dataMinTick) {
+        nextMin = dataMinTick
+        nextMax = dataMinTick + nextRange
+      }
+      if (nextMax > dataMaxTick) {
+        nextMax = dataMaxTick
+        nextMin = dataMaxTick - nextRange
+      }
+      setZoomRangeTicks(nextRange)
+      setZoomCenterTick((nextMin + nextMax) / 2)
+    }
+    element.addEventListener('wheel', onWheel, { passive: false })
+    return () => {
+      element.removeEventListener('wheel', onWheel)
+    }
+  }, [
+    dataMaxTick,
+    dataMinTick,
+    dataRange,
+    minZoomRange,
+    padding,
+    points.length,
+    viewMaxTick,
+    viewMinTick,
+    width,
+  ])
 
   const findClosestTick = (targetPrice: number) => {
     if (!points.length) {
@@ -189,6 +335,9 @@ function LiquidityChart({
         : closest,
     ).tick
   }
+
+  const clampTick = (tick: number) =>
+    Math.min(viewMaxTick, Math.max(viewMinTick, tick))
 
   return (
     <div className="card">
@@ -225,13 +374,21 @@ function LiquidityChart({
 
       <div className="chart-shell">
         <svg
+          ref={svgRef}
           width="100%"
           viewBox={`0 0 ${width} ${height}`}
           onMouseMove={handleMouseMove}
-          onMouseLeave={() => setHoverIndex(null)}
+          onMouseDown={handleMouseDown}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={() => {
+            setHoverIndex(null)
+            setHoverX(null)
+            handleMouseUp()
+          }}
+          className={isPanning ? 'liquidity-chart-svg is-panning' : 'liquidity-chart-svg'}
         >
           <rect x="0" y="0" width={width} height={height} rx="14" fill="var(--chart-bg)" />
-          {points.map((point, idx) => {
+          {renderPoints.map((point, idx) => {
             const heightScale = maxLiquidity > 0 ? point.liquidityValue / maxLiquidity : 0
             const barHeight = heightScale * chartHeight
             const x = scaleX(point.tick) - barWidth / 2
@@ -248,20 +405,30 @@ function LiquidityChart({
               />
             )
           })}
-          {hasRange && points.length ? (
+          {hoverX !== null && renderPoints.length ? (
             <line
-              x1={scaleX(findClosestTick(rangeLow ?? 0))}
-              x2={scaleX(findClosestTick(rangeLow ?? 0))}
+              x1={hoverX}
+              x2={hoverX}
+              y1={padding}
+              y2={height - padding}
+              className="liquidity-hover-line"
+              strokeWidth="1"
+            />
+          ) : null}
+          {hasRange && renderPoints.length ? (
+            <line
+              x1={scaleX(clampTick(findClosestTick(rangeLow ?? 0)))}
+              x2={scaleX(clampTick(findClosestTick(rangeLow ?? 0)))}
               y1={padding}
               y2={height - padding}
               stroke="var(--range)"
               strokeWidth="2"
             />
           ) : null}
-          {hasRange && points.length ? (
+          {hasRange && renderPoints.length ? (
             <line
-              x1={scaleX(findClosestTick(rangeHigh ?? 0))}
-              x2={scaleX(findClosestTick(rangeHigh ?? 0))}
+              x1={scaleX(clampTick(findClosestTick(rangeHigh ?? 0)))}
+              x2={scaleX(clampTick(findClosestTick(rangeHigh ?? 0)))}
               y1={padding}
               y2={height - padding}
               stroke="var(--range)"
@@ -269,8 +436,8 @@ function LiquidityChart({
             />
           ) : null}
           <line
-            x1={scaleX(currentTickValue)}
-            x2={scaleX(currentTickValue)}
+            x1={scaleX(clampTick(currentTickValue))}
+            x2={scaleX(clampTick(currentTickValue))}
             y1={padding}
             y2={height - padding}
             stroke="var(--current)"
@@ -305,6 +472,12 @@ function PoolPriceChart({
   token1,
 }: PoolPriceChartProps) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
+  const [hoverX, setHoverX] = useState<number | null>(null)
+  const [zoomRangeMs, setZoomRangeMs] = useState<number | null>(null)
+  const [zoomCenterTs, setZoomCenterTs] = useState<number | null>(null)
+  const [isPanning, setIsPanning] = useState(false)
+  const panStartRef = useRef<{ x: number; center: number; range: number } | null>(null)
+  const svgRef = useRef<SVGSVGElement | null>(null)
 
   const points = useMemo(() => {
     if (!apiData?.series?.length) {
@@ -344,8 +517,25 @@ function PoolPriceChart({
     maxPrice += 1
   }
 
-  const minTs = points.length ? points[0].tsMs ?? 0 : 0
-  const maxTs = points.length ? points[points.length - 1].tsMs ?? 1 : 1
+  const dataMinTs = points.length ? points[0].tsMs ?? 0 : 0
+  const dataMaxTs = points.length ? points[points.length - 1].tsMs ?? 1 : 1
+  const dataRange = Math.max(1, dataMaxTs - dataMinTs)
+  const minZoomRange = Math.min(dataRange, 60 * 60 * 1000)
+  const currentRange = Math.min(
+    dataRange,
+    Math.max(minZoomRange, zoomRangeMs ?? dataRange),
+  )
+  const center = zoomCenterTs ?? (dataMinTs + dataMaxTs) / 2
+  let viewMinTs = center - currentRange / 2
+  let viewMaxTs = center + currentRange / 2
+  if (viewMinTs < dataMinTs) {
+    viewMinTs = dataMinTs
+    viewMaxTs = dataMinTs + currentRange
+  }
+  if (viewMaxTs > dataMaxTs) {
+    viewMaxTs = dataMaxTs
+    viewMinTs = dataMaxTs - currentRange
+  }
 
   const width = 820
   const height = 260
@@ -355,10 +545,10 @@ function PoolPriceChart({
   const baseY = height - padding
 
   const scaleX = (timestamp: number) => {
-    if (maxTs === minTs) {
+    if (viewMaxTs === viewMinTs) {
       return padding
     }
-    const ratio = (timestamp - minTs) / (maxTs - minTs)
+    const ratio = (timestamp - viewMinTs) / (viewMaxTs - viewMinTs)
     return padding + ratio * chartWidth
   }
 
@@ -372,8 +562,20 @@ function PoolPriceChart({
 
   const clampY = (value: number) => Math.min(baseY, Math.max(padding, value))
 
-  const linePath = points.length
-    ? points
+  const pointsInView = useMemo(() => {
+    if (!points.length) {
+      return []
+    }
+    return points.filter((point) => {
+      const ts = point.tsMs ?? 0
+      return ts >= viewMinTs && ts <= viewMaxTs
+    })
+  }, [points, viewMaxTs, viewMinTs])
+
+  const renderPoints = pointsInView.length >= 2 ? pointsInView : points
+
+  const linePath = renderPoints.length
+    ? renderPoints
         .map((point, idx) => {
           const command = idx === 0 ? 'M' : 'L'
           return `${command} ${scaleX(point.tsMs ?? 0)} ${scaleY(point.price)}`
@@ -381,14 +583,14 @@ function PoolPriceChart({
         .join(' ')
     : ''
 
-  const areaPath = points.length
+  const areaPath = renderPoints.length
     ? [
-        `M ${scaleX(points[0].tsMs ?? 0)} ${baseY}`,
-        `L ${scaleX(points[0].tsMs ?? 0)} ${scaleY(points[0].price)}`,
-        ...points
+        `M ${scaleX(renderPoints[0].tsMs ?? 0)} ${baseY}`,
+        `L ${scaleX(renderPoints[0].tsMs ?? 0)} ${scaleY(renderPoints[0].price)}`,
+        ...renderPoints
           .slice(1)
           .map((point) => `L ${scaleX(point.tsMs ?? 0)} ${scaleY(point.price)}`),
-        `L ${scaleX(points[points.length - 1].tsMs ?? 0)} ${baseY}`,
+        `L ${scaleX(renderPoints[renderPoints.length - 1].tsMs ?? 0)} ${baseY}`,
         'Z',
       ].join(' ')
     : ''
@@ -401,11 +603,32 @@ function PoolPriceChart({
     const paddingPx = (padding / width) * rect.width
     const innerWidth = rect.width - paddingPx * 2
     const x = Math.min(innerWidth, Math.max(0, event.clientX - rect.left - paddingPx))
+    if (innerWidth <= 0) {
+      return
+    }
     const ratio = innerWidth > 0 ? x / innerWidth : 0
-    const hoverTime = minTs + ratio * (maxTs - minTs)
+    setHoverX(padding + ratio * chartWidth)
+    if (isPanning && panStartRef.current) {
+      const deltaX = x - panStartRef.current.x
+      const deltaRatio = deltaX / innerWidth
+      const deltaTime = deltaRatio * panStartRef.current.range
+      const halfRange = panStartRef.current.range / 2
+      let nextCenter = panStartRef.current.center - deltaTime
+      if (nextCenter - halfRange < dataMinTs) {
+        nextCenter = dataMinTs + halfRange
+      }
+      if (nextCenter + halfRange > dataMaxTs) {
+        nextCenter = dataMaxTs - halfRange
+      }
+      setZoomRangeMs(panStartRef.current.range)
+      setZoomCenterTs(nextCenter)
+      return
+    }
+    const hoverTime = viewMinTs + ratio * (viewMaxTs - viewMinTs)
     let closestIndex = 0
-    let bestDistance = Math.abs((points[0].tsMs ?? 0) - hoverTime)
-    points.forEach((point, idx) => {
+    const candidates = renderPoints.length ? renderPoints : points
+    let bestDistance = Math.abs((candidates[0].tsMs ?? 0) - hoverTime)
+    candidates.forEach((point, idx) => {
       const distance = Math.abs((point.tsMs ?? 0) - hoverTime)
       if (distance < bestDistance) {
         bestDistance = distance
@@ -415,10 +638,85 @@ function PoolPriceChart({
     setHoverIndex(closestIndex)
   }
 
+  const handleMouseDown = (event: React.MouseEvent<SVGSVGElement>) => {
+    if (event.button !== 0 || !points.length) {
+      return
+    }
+    event.preventDefault()
+    const rect = event.currentTarget.getBoundingClientRect()
+    const paddingPx = (padding / width) * rect.width
+    const innerWidth = rect.width - paddingPx * 2
+    const x = Math.min(innerWidth, Math.max(0, event.clientX - rect.left - paddingPx))
+    const centerPoint = viewMinTs + (viewMaxTs - viewMinTs) / 2
+    panStartRef.current = {
+      x,
+      center: centerPoint,
+      range: viewMaxTs - viewMinTs,
+    }
+    setIsPanning(true)
+  }
+
+  const handleMouseUp = () => {
+    setIsPanning(false)
+    panStartRef.current = null
+  }
+
+  useEffect(() => {
+    const element = svgRef.current
+    if (!element) {
+      return
+    }
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault()
+      event.stopPropagation()
+      if (!points.length) {
+        return
+      }
+      const rect = element.getBoundingClientRect()
+      const paddingPx = (padding / width) * rect.width
+      const innerWidth = rect.width - paddingPx * 2
+      if (innerWidth <= 0) {
+        return
+      }
+      const x = Math.min(innerWidth, Math.max(0, event.clientX - rect.left - paddingPx))
+      const ratio = innerWidth > 0 ? x / innerWidth : 0
+      const zoomFactor = event.deltaY < 0 ? 0.85 : 1.15
+      const nextRangeUnclamped = (viewMaxTs - viewMinTs) * zoomFactor
+      const nextRange = Math.max(minZoomRange, Math.min(dataRange, nextRangeUnclamped))
+      const anchorTime = viewMinTs + ratio * (viewMaxTs - viewMinTs)
+      let nextMin = anchorTime - ratio * nextRange
+      let nextMax = nextMin + nextRange
+      if (nextMin < dataMinTs) {
+        nextMin = dataMinTs
+        nextMax = dataMinTs + nextRange
+      }
+      if (nextMax > dataMaxTs) {
+        nextMax = dataMaxTs
+        nextMin = dataMaxTs - nextRange
+      }
+      setZoomRangeMs(nextRange)
+      setZoomCenterTs((nextMin + nextMax) / 2)
+    }
+    element.addEventListener('wheel', onWheel, { passive: false })
+    return () => {
+      element.removeEventListener('wheel', onWheel)
+    }
+  }, [
+    dataMaxTs,
+    dataMinTs,
+    dataRange,
+    minZoomRange,
+    padding,
+    points.length,
+    viewMaxTs,
+    viewMinTs,
+    width,
+  ])
+
   const hoverPoint =
-    hoverIndex !== null && points[hoverIndex]
-      ? points[hoverIndex]
-      : points[points.length - 1]
+    hoverIndex !== null && renderPoints[hoverIndex]
+      ? renderPoints[hoverIndex]
+      : renderPoints[renderPoints.length - 1]
 
   const formatDateTime = (timestamp: string) => {
     if (!timestamp) {
@@ -436,10 +734,74 @@ function PoolPriceChart({
 
   const formatStat = (value: number) => (Number.isFinite(value) ? value.toFixed(2) : '--')
 
-  const axisStart = points.length ? formatDateTime(points[0].timestamp) : 'No data'
-  const axisEnd = points.length
-    ? formatDateTime(points[points.length - 1].timestamp)
-    : '--'
+  const axisTicks = useMemo(() => {
+    if (!renderPoints.length || viewMaxTs <= viewMinTs) {
+      return []
+    }
+
+    const hourMs = 60 * 60 * 1000
+    const rangeHours = (viewMaxTs - viewMinTs) / hourMs
+    const desiredTicks = 7
+    const roughStepHours = Math.max(1, Math.round(rangeHours / (desiredTicks - 1)))
+    const stepOptions = [1, 2, 3, 4, 6, 8, 12, 24]
+    const stepHours = stepOptions.find((value) => value >= roughStepHours) ?? roughStepHours
+    const stepMs = stepHours * hourMs
+
+    const minDate = new Date(viewMinTs)
+    let firstTick = new Date(
+      minDate.getFullYear(),
+      minDate.getMonth(),
+      minDate.getDate(),
+      minDate.getHours(),
+    ).getTime()
+    if (firstTick < viewMinTs) {
+      firstTick += hourMs
+    }
+    const firstHour = new Date(firstTick).getHours()
+    const hourOffset = firstHour % stepHours
+    if (hourOffset !== 0) {
+      firstTick += (stepHours - hourOffset) * hourMs
+    }
+
+    const ticks: Array<{ ts: number; label: string }> = []
+    ticks.push({ ts: viewMinTs, label: String(new Date(viewMinTs).getHours()) })
+
+    for (let ts = firstTick; ts < viewMaxTs; ts += stepMs) {
+      ticks.push({ ts, label: String(new Date(ts).getHours()) })
+    }
+
+    ticks.push({ ts: viewMaxTs, label: String(new Date(viewMaxTs).getHours()) })
+
+    const positioned = ticks
+      .filter(
+        (tick) =>
+          Number.isFinite(tick.ts) && tick.ts >= viewMinTs && tick.ts <= viewMaxTs,
+      )
+      .map((tick) => {
+        const ratio = (tick.ts - viewMinTs) / (viewMaxTs - viewMinTs)
+        const x = padding + ratio * chartWidth
+        return {
+          label: tick.label,
+          left: (x / width) * 100,
+          ts: tick.ts,
+        }
+      })
+      .sort((a, b) => a.ts - b.ts)
+
+    const deduped: Array<{ label: string; left: number; ts: number }> = []
+    const minSpacing = 4
+    positioned.forEach((tick) => {
+      const last = deduped[deduped.length - 1]
+      if (!last || Math.abs(tick.left - last.left) >= minSpacing) {
+        deduped.push(tick)
+      }
+    })
+
+    return deduped.map((tick, index, list) => ({
+      ...tick,
+      align: index === 0 ? 'start' : index === list.length - 1 ? 'end' : 'center',
+    }))
+  }, [chartWidth, padding, renderPoints.length, viewMaxTs, viewMinTs, width])
 
   return (
     <div className="card pool-price-card">
@@ -472,10 +834,18 @@ function PoolPriceChart({
       </div>
       <div className="price-chart">
         <svg
+          ref={svgRef}
           width="100%"
           viewBox={`0 0 ${width} ${height}`}
           onMouseMove={handleMouseMove}
-          onMouseLeave={() => setHoverIndex(null)}
+          onMouseDown={handleMouseDown}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={() => {
+            setHoverIndex(null)
+            setHoverX(null)
+            handleMouseUp()
+          }}
+          className={isPanning ? 'price-chart-svg is-panning' : 'price-chart-svg'}
         >
           <defs>
             <linearGradient id="priceFill" x1="0" x2="0" y1="0" y2="1">
@@ -516,6 +886,16 @@ function PoolPriceChart({
           ) : null}
           {areaPath ? <path d={areaPath} fill="url(#priceFill)" /> : null}
           {linePath ? <path d={linePath} fill="none" stroke="var(--bar)" strokeWidth="2" /> : null}
+          {hoverX !== null && renderPoints.length ? (
+            <line
+              x1={hoverX}
+              x2={hoverX}
+              y1={padding}
+              y2={height - padding}
+              className="price-hover-line"
+              strokeWidth="1"
+            />
+          ) : null}
         </svg>
         {hoverPoint ? (
           <div className="tooltip" style={{ left: `${scaleX(hoverPoint.tsMs ?? 0)}px` }}>
@@ -527,8 +907,15 @@ function PoolPriceChart({
         ) : null}
       </div>
       <div className="price-axis">
-        <span>{axisStart}</span>
-        <span>{axisEnd}</span>
+        {axisTicks.map((tick) => (
+          <span
+            key={`${tick.label}-${tick.left}`}
+            className={`price-axis-label price-axis-label--${tick.align}`}
+            style={{ left: `${tick.left}%` }}
+          >
+            {tick.label}
+          </span>
+        ))}
       </div>
     </div>
   )
