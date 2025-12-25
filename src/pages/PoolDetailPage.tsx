@@ -1082,10 +1082,15 @@ function LiquidityPriceRange({
     if (!Number.isFinite(rawTick)) {
       return
     }
+    const tickFloat = rawTick / tickSpacing
+    const rounded = Math.round(tickFloat)
+    const isExact = Math.abs(tickFloat - rounded) < 1e-6
+    const lowerTick = Math.floor(tickFloat) * tickSpacing
+    const upperTick = Math.ceil(tickFloat) * tickSpacing
     const baseTick =
       direction > 0
-        ? Math.floor(rawTick / tickSpacing) * tickSpacing
-        : Math.ceil(rawTick / tickSpacing) * tickSpacing
+        ? (isExact ? rounded * tickSpacing : lowerTick)
+        : (isExact ? rounded * tickSpacing : upperTick)
     const nextTick = baseTick + direction * tickSpacing
     const clampedTick = Math.min(maxTick, Math.max(minTick, nextTick))
     const nextPrice = Math.pow(1.0001, clampedTick) * decimalAdjust
