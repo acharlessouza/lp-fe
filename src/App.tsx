@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Link, Navigate, Route, Routes } from 'react-router-dom'
 import PoolDetailPage from './pages/PoolDetailPage'
 import SimulatePage from './pages/SimulatePage'
 import './App.css'
@@ -14,6 +14,20 @@ function App() {
             <p className="brand-subtitle">Liquidity discovery workspace</p>
           </div>
         </div>
+        <nav className="main-nav" aria-label="Primary">
+          <a className="nav-link disabled" href="#" aria-disabled="true">
+            Discover
+          </a>
+          <Link className="nav-link" to="/simulate">
+            Simulate
+          </Link>
+          <a className="nav-link disabled" href="#" aria-disabled="true">
+            Track
+          </a>
+          <a className="nav-link disabled" href="#" aria-disabled="true">
+            Pricing
+          </a>
+        </nav>
         <div className="header-meta">
           <span className="status-pill">Simulate v1</span>
         </div>

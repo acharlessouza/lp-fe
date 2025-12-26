@@ -47,6 +47,33 @@
   gap: 12px;
 }
 
+.main-nav {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.nav-link {
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  padding: 6px 10px;
+  border-radius: 999px;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.nav-link:hover {
+  background: rgba(231, 111, 81, 0.12);
+}
+
+.nav-link.disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .status-pill {
   background: #fff;
   border: 1px solid rgba(31, 26, 22, 0.1);
