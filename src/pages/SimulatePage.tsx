@@ -172,6 +172,19 @@ const poolPairLabel = (
   return `${left} / ${right}`
 }
 
+const formatFeeTier = (pool: Pool) => {
+  const rawFee =
+    (pool as { fee_tier?: number | string }).fee_tier ??
+    (pool as { feeTier?: number | string }).feeTier ??
+    pool.fee
+  const feeValue = Number(rawFee)
+  if (!Number.isFinite(feeValue)) {
+    return 'Fee --'
+  }
+  const percentage = feeValue / 10000
+  return `Fee ${percentage.toFixed(2)}%`
+}
+
 function SimulatePage() {
   const [mode, setMode] = useState<Mode>('pair')
   const [searchParams] = useSearchParams()
@@ -868,26 +881,8 @@ function SimulatePage() {
                   aria-disabled={!href}
                 >
                   <div className="pool-title">{poolLabel(pool, index)}</div>
-                  <div className="pool-subtitle">
-                    {poolPairLabel(
-                      pool,
-                      selectedToken0,
-                      selectedToken1,
-                      token0,
-                      token1,
-                    )}
-                  </div>
                   <div className="pool-meta">
-                    {poolAddress && (
-                      <span className="meta-chip">{shortAddress(poolAddress)}</span>
-                    )}
-                    {pool.fee && <span className="meta-chip">Fee {pool.fee}</span>}
-                    {pool.token0?.symbol && (
-                      <span className="meta-chip">{pool.token0.symbol}</span>
-                    )}
-                    {pool.token1?.symbol && (
-                      <span className="meta-chip">{pool.token1.symbol}</span>
-                    )}
+                    <span className="meta-chip">{formatFeeTier(pool)}</span>
                   </div>
                 </article>
               )

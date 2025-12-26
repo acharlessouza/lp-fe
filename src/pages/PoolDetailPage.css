@@ -477,21 +477,23 @@
 
 .range-sliders input[type='range']::-webkit-slider-thumb {
   appearance: none;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
-  background: #fff;
-  border: 2px solid var(--range);
+  background: transparent;
+  border: 0;
+  opacity: 0;
   pointer-events: auto;
   cursor: pointer;
 }
 
 .range-sliders input[type='range']::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
-  background: #fff;
-  border: 2px solid var(--range);
+  background: transparent;
+  border: 0;
+  opacity: 0;
   pointer-events: auto;
   cursor: pointer;
 }

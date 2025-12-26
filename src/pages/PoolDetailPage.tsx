@@ -495,6 +495,10 @@ function PoolPriceChart({
     minPrice -= 1
     maxPrice += 1
   }
+  const isMinInRange =
+    Number.isFinite(minInput) && minInput >= minPrice && minInput <= maxPrice
+  const isMaxInRange =
+    Number.isFinite(maxInput) && maxInput >= minPrice && maxInput <= maxPrice
 
   const dataMinTs = points.length ? points[0].tsMs ?? 0 : 0
   const dataMaxTs = points.length ? points[points.length - 1].tsMs ?? 1 : 1
@@ -832,7 +836,7 @@ function PoolPriceChart({
             </linearGradient>
           </defs>
           <rect x="0" y="0" width={width} height={height} rx="14" fill="var(--chart-bg)" />
-          {Number.isFinite(minInput) ? (
+          {isMinInRange ? (
             <line
               x1={padding}
               x2={width - padding}
@@ -842,7 +846,7 @@ function PoolPriceChart({
               strokeWidth="1.5"
             />
           ) : null}
-          {Number.isFinite(maxInput) ? (
+          {isMaxInRange ? (
             <line
               x1={padding}
               x2={width - padding}
