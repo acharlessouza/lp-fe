@@ -18,13 +18,6 @@ const shortAddress = (address: string) => {
   return `${address.slice(0, 6)}...${address.slice(-4)}`
 }
 
-const tokenLabel = (token: Token) => {
-  if (token.symbol) {
-    return `${token.symbol} · ${shortAddress(token.address)}`
-  }
-  return shortAddress(token.address)
-}
-
 const tokenDisplayValue = (token: Token) =>
   token.symbol ?? token.name ?? 'Unknown token'
 
@@ -148,28 +141,6 @@ const poolLabel = (pool: Pool, fallbackIndex: number) => {
     return `Pool ${pool.id}`
   }
   return `Pool ${fallbackIndex + 1}`
-}
-
-const poolPairLabel = (
-  pool: Pool,
-  token0Selection: Token | undefined,
-  token1Selection: Token | undefined,
-  token0Address: string,
-  token1Address: string,
-) => {
-  if (pool.token0 && pool.token1) {
-    return `${tokenLabel(pool.token0)} / ${tokenLabel(pool.token1)}`
-  }
-  const left = token0Selection
-    ? tokenLabel(token0Selection)
-    : shortAddress(token0Address)
-  const right = token1Selection
-    ? tokenLabel(token1Selection)
-    : shortAddress(token1Address)
-  if (!left || !right) {
-    return 'Selected pair'
-  }
-  return `${left} / ${right}`
 }
 
 const formatFeeTier = (pool: Pool) => {

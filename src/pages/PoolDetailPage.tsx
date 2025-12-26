@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import type {
   AllocateResponse,
@@ -1580,7 +1580,7 @@ function PoolDetailPage() {
     return { min: Math.min(...prices), max: Math.max(...prices) }
   }, [distributionData])
 
-  const fetchDistribution = async () => {
+  const fetchDistribution = useCallback(async () => {
     if (!pool) {
       return
     }
@@ -1606,9 +1606,9 @@ function PoolDetailPage() {
     } finally {
       setDistributionLoading(false)
     }
-  }
+  }, [pool, rangeMax, rangeMin])
 
-  const fetchAllocate = async () => {
+  const fetchAllocate = useCallback(async () => {
     if (!normalizedPoolAddress || !network) {
       return
     }
@@ -1631,9 +1631,9 @@ function PoolDetailPage() {
     } finally {
       setAllocateLoading(false)
     }
-  }
+  }, [depositUsd, network, normalizedPoolAddress, rangeMax, rangeMin])
 
-  const fetchPoolPrice = async () => {
+  const fetchPoolPrice = useCallback(async () => {
     if (!pool) {
       return
     }
@@ -1649,9 +1649,9 @@ function PoolDetailPage() {
     } finally {
       setPoolPriceLoading(false)
     }
-  }
+  }, [pool, timeframeDays])
 
-  const fetchEstimatedFees = async () => {
+  const fetchEstimatedFees = useCallback(async () => {
     if (!pool) {
       return
     }
@@ -1690,7 +1690,7 @@ function PoolDetailPage() {
     } finally {
       setEstimatedFeesLoading(false)
     }
-  }
+  }, [allocateData, depositUsd, pool, rangeMax, rangeMin, timeframeDays])
 
   useEffect(() => {
     if (!showPool || !pool) {
@@ -1707,7 +1707,7 @@ function PoolDetailPage() {
         clearTimeout(distributionDebounceRef.current)
       }
     }
-  }, [pool, rangeMax, rangeMin, showPool])
+  }, [fetchDistribution, pool, rangeMax, rangeMin, showPool])
 
   useEffect(() => {
     if (!hasContext || !normalizedPoolAddress || !network || !Number.isFinite(exchangeId)) {
@@ -1741,14 +1741,14 @@ function PoolDetailPage() {
     }
     fetchDistribution()
     fetchAllocate()
-  }, [pool, showPool])
+  }, [fetchAllocate, fetchDistribution, pool, showPool])
 
   useEffect(() => {
     if (!showPool || !pool) {
       return
     }
     fetchPoolPrice()
-  }, [pool, showPool, timeframeDays])
+  }, [fetchPoolPrice, pool, showPool, timeframeDays])
 
   useEffect(() => {
     if (!showPool || !pool) {
@@ -1772,7 +1772,7 @@ function PoolDetailPage() {
         clearTimeout(allocateDebounceRef.current)
       }
     }
-  }, [depositUsd, pool, showPool])
+  }, [depositUsd, fetchAllocate, pool, showPool])
 
   useEffect(() => {
     if (!showPool || !pool || !allocateData) {
@@ -1801,7 +1801,16 @@ function PoolDetailPage() {
         clearTimeout(estimatedFeesDebounceRef.current)
       }
     }
-  }, [allocateData, depositUsd, rangeMin, rangeMax, timeframeDays, pool, showPool])
+  }, [
+    allocateData,
+    depositUsd,
+    fetchEstimatedFees,
+    pool,
+    rangeMax,
+    rangeMin,
+    showPool,
+    timeframeDays,
+  ])
 
   useEffect(() => {
     if (!showPool) {

@@ -1,4 +1,5 @@
 import { Link, Navigate, Route, Routes } from 'react-router-dom'
+import DiscoverPage from './pages/DiscoverPage'
 import PoolDetailPage from './pages/PoolDetailPage'
 import SimulatePage from './pages/SimulatePage'
 import './App.css'
@@ -15,9 +16,9 @@ function App() {
           </div>
         </div>
         <nav className="main-nav" aria-label="Primary">
-          <a className="nav-link disabled" href="#" aria-disabled="true">
+          <Link className="nav-link" to="/discover">
             Discover
-          </a>
+          </Link>
           <Link className="nav-link" to="/simulate">
             Simulate
           </Link>
@@ -34,6 +35,7 @@ function App() {
       </header>
       <Routes>
         <Route path="/" element={<Navigate to="/simulate" replace />} />
+        <Route path="/discover" element={<DiscoverPage />} />
         <Route path="/simulate" element={<SimulatePage />} />
         <Route path="/simulate/pools/:poolAddress" element={<PoolDetailPage />} />
         <Route

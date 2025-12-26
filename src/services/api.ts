@@ -156,6 +156,30 @@ export type EstimatedFeesResponse = {
   }
 }
 
+export type DiscoverPool = {
+  pool_id: number
+  pool_name: string
+  pool_address?: string
+  network?: string
+  exchange?: string
+  fee_tier: number | string
+  average_apr: number | string
+  price_volatility: number | string | null
+  tvl_usd: number | string
+  correlation: number | string | null
+  avg_daily_fees_usd: number | string
+  daily_fees_tvl_pct: number | string
+  avg_daily_volume_usd: number | string
+  daily_volume_tvl_pct: number | string
+}
+
+export type DiscoverPoolsResponse = {
+  page: number
+  page_size: number
+  total: number
+  data: DiscoverPool[]
+}
+
 export type MatchTicksResponse = {
   min_price_matched: number | string
   max_price_matched: number | string
@@ -220,7 +244,7 @@ export const postLiquidityDistribution = (
   },
   signal?: AbortSignal,
 ) =>
-  fetchJson<LiquidityDistributionResponse>('/api/liquidity-distribution', {
+  fetchJson<LiquidityDistributionResponse>('/v1/liquidity-distribution', {
     method: 'POST',
     body: payload,
     signal,
@@ -248,7 +272,7 @@ export const getPoolPrice = (
   signal?: AbortSignal,
 ) =>
   fetchJson<PoolPriceResponse>(
-    `/api/pool-price?pool_id=${poolId}&days=${days}`,
+    `/v1/pool-price?pool_id=${poolId}&days=${days}`,
     { signal },
   )
 
@@ -264,7 +288,7 @@ export const postEstimatedFees = (
   },
   signal?: AbortSignal,
 ) =>
-  fetchJson<EstimatedFeesResponse>('/api/estimated-fees', {
+  fetchJson<EstimatedFeesResponse>('/v1/estimated-fees', {
     method: 'POST',
     body: payload,
     signal,
@@ -283,3 +307,47 @@ export const postMatchTicks = (
     body: payload,
     signal,
   })
+
+export const getDiscoverPools = (
+  params: {
+    network_id?: number
+    exchange_id?: number
+    token_symbol?: string
+    timeframe_days?: number
+    page?: number
+    page_size?: number
+    order_by?: string
+    order_dir?: 'asc' | 'desc'
+  },
+  signal?: AbortSignal,
+) => {
+  const search = new URLSearchParams()
+  if (Number.isFinite(params.network_id)) {
+    search.set('network_id', String(params.network_id))
+  }
+  if (Number.isFinite(params.exchange_id)) {
+    search.set('exchange_id', String(params.exchange_id))
+  }
+  if (params.token_symbol) {
+    search.set('token_symbol', params.token_symbol)
+  }
+  if (Number.isFinite(params.timeframe_days)) {
+    search.set('timeframe_days', String(params.timeframe_days))
+  }
+  if (Number.isFinite(params.page)) {
+    search.set('page', String(params.page))
+  }
+  if (Number.isFinite(params.page_size)) {
+    search.set('page_size', String(params.page_size))
+  }
+  if (params.order_by) {
+    search.set('order_by', params.order_by)
+  }
+  if (params.order_dir) {
+    search.set('order_dir', params.order_dir)
+  }
+  const query = search.toString()
+  return fetchJson<DiscoverPoolsResponse>(`/v1/discover/pools${query ? `?${query}` : ''}`, {
+    signal,
+  })
+}
