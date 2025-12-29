@@ -149,7 +149,7 @@ function LiquidityChart({
     ? points[points.length - 1].tick
     : currentTickValue + tickRange
   const dataRange = Math.max(1, dataMaxTick - dataMinTick)
-  const minZoomRange = Math.min(dataRange, 20000)
+  const minZoomRange = 1
   const currentRange = Math.min(
     dataRange,
     Math.max(minZoomRange, zoomRangeTicks ?? dataRange),
@@ -165,6 +165,12 @@ function LiquidityChart({
     viewMaxTick = dataMaxTick
     viewMinTick = dataMaxTick - currentRange
   }
+
+  useEffect(() => {
+    if (zoomRangeTicks === null && dataRange > 0) {
+      setZoomRangeTicks(Math.min(dataRange, 20000))
+    }
+  }, [dataRange, zoomRangeTicks])
 
   const pointsInView = useMemo(() => {
     if (!points.length) {
@@ -206,20 +212,93 @@ function LiquidityChart({
   const width = 820
   const height = 320
   const yPadding = 0
-  const spacingFactor = 1.08
-  const chartWidth = width * spacingFactor
-  const barWidth = renderPoints.length ? chartWidth / renderPoints.length : chartWidth
+  const barWidth = renderPoints.length ? width / renderPoints.length : width
   const barThickness = Math.max(1, barWidth * 0.3)
   const chartHeight = height - yPadding * 2
-  const xOffset = (width - chartWidth) / 2 + barThickness / 2
+  const extraGapPx = 2
 
-  const scaleX = (tick: number) => {
-    if (viewMaxTick === viewMinTick) {
-      return xOffset
+  const minTickStep = useMemo(() => {
+    if (renderPoints.length < 2) {
+      return 1
     }
-    const ratio = (tick - viewMinTick) / (viewMaxTick - viewMinTick)
-    return xOffset + ratio * chartWidth
+    let minStep = Number.POSITIVE_INFINITY
+    for (let i = 1; i < renderPoints.length; i += 1) {
+      const delta = renderPoints[i].tick - renderPoints[i - 1].tick
+      if (delta > 0 && delta < minStep) {
+        minStep = delta
+      }
+    }
+    return Number.isFinite(minStep) ? minStep : 1
+  }, [renderPoints])
+
+  const xPositions = useMemo(() => {
+    if (!renderPoints.length) {
+      return []
+    }
+    if (renderPoints.length === 1) {
+      return [barThickness / 2]
+    }
+    const threshold = minTickStep * 4
+    const steps: number[] = []
+    let totalUnits = 0
+    let bigGapCount = 0
+    for (let i = 1; i < renderPoints.length; i += 1) {
+      const delta = renderPoints[i].tick - renderPoints[i - 1].tick
+      const isBigGap = delta > threshold
+      const units = isBigGap ? 1 : Math.max(1, delta / minTickStep)
+      if (isBigGap) {
+        bigGapCount += 1
+      }
+      totalUnits += units
+      steps.push(units)
+    }
+    const availableWidth = Math.max(0, width - barThickness - bigGapCount * extraGapPx)
+    const baseStep = totalUnits > 0 ? availableWidth / totalUnits : 0
+    const positions: number[] = [barThickness / 2]
+    let currentX = barThickness / 2
+    for (let i = 0; i < steps.length; i += 1) {
+      const delta = renderPoints[i + 1].tick - renderPoints[i].tick
+      const isBigGap = delta > threshold
+      const stepPx = steps[i] * baseStep + (isBigGap ? extraGapPx : 0)
+      currentX += stepPx
+      positions.push(currentX)
+    }
+    return positions
+  }, [barThickness, extraGapPx, minTickStep, renderPoints, width])
+
+  const getClosestIndexByX = (x: number) => {
+    if (!xPositions.length) {
+      return null
+    }
+    let bestIndex = 0
+    let bestDistance = Math.abs(xPositions[0] - x)
+    for (let i = 1; i < xPositions.length; i += 1) {
+      const distance = Math.abs(xPositions[i] - x)
+      if (distance < bestDistance) {
+        bestDistance = distance
+        bestIndex = i
+      }
+    }
+    return bestIndex
   }
+
+  const getXByTick = (tick: number) => {
+    if (!renderPoints.length) {
+      return barThickness / 2
+    }
+    let bestIndex = 0
+    let bestDistance = Math.abs(renderPoints[0].tick - tick)
+    for (let i = 1; i < renderPoints.length; i += 1) {
+      const distance = Math.abs(renderPoints[i].tick - tick)
+      if (distance < bestDistance) {
+        bestDistance = distance
+        bestIndex = i
+      }
+    }
+    return xPositions[bestIndex] ?? barThickness / 2
+  }
+
+  const scaleX = (tick: number) => getXByTick(tick)
 
   const getPanMetrics = (clientX: number) => {
     const element = svgRef.current
@@ -227,40 +306,27 @@ function LiquidityChart({
       return null
     }
     const rect = element.getBoundingClientRect()
-    const xOffsetPx = (xOffset / width) * rect.width
-    const innerWidth = rect.width - xOffsetPx * 2
-    if (innerWidth <= 0) {
+    if (rect.width <= 0) {
       return null
     }
-    const x = Math.min(innerWidth, Math.max(0, clientX - rect.left - xOffsetPx))
-    return { x, innerWidth }
+    const x = ((clientX - rect.left) / rect.width) * width
+    return { x: Math.min(width, Math.max(0, x)), innerWidth: width }
   }
 
   const handleMouseMove = (event: React.MouseEvent<SVGSVGElement>) => {
     if (!points.length) {
       return
     }
-    if (isPanning) {
-      return
-    }
     const metrics = getPanMetrics(event.clientX)
     if (!metrics) {
       return
     }
-    const { x, innerWidth } = metrics
-    const ratio = innerWidth > 0 ? x / innerWidth : 0
-    setHoverX(xOffset + ratio * chartWidth)
-    const hoverTick = viewMinTick + ratio * (viewMaxTick - viewMinTick)
-    const candidates = renderPoints.length ? renderPoints : points
-    let closestIndex = 0
-    let bestDistance = Math.abs(candidates[0].tick - hoverTick)
-    candidates.forEach((point, idx) => {
-      const distance = Math.abs(point.tick - hoverTick)
-      if (distance < bestDistance) {
-        bestDistance = distance
-        closestIndex = idx
-      }
-    })
+    const { x } = metrics
+    const closestIndex = getClosestIndexByX(x)
+    if (closestIndex === null) {
+      return
+    }
+    setHoverX(xPositions[closestIndex] ?? x)
     setHoverIndex(closestIndex)
   }
 
@@ -336,13 +402,12 @@ function LiquidityChart({
         return
       }
       const rect = element.getBoundingClientRect()
-      const xOffsetPx = (xOffset / width) * rect.width
-      const innerWidth = rect.width - xOffsetPx * 2
-      if (innerWidth <= 0) {
+      if (rect.width <= 0) {
         return
       }
-      const x = Math.min(innerWidth, Math.max(0, event.clientX - rect.left - xOffsetPx))
-      const ratio = innerWidth > 0 ? x / innerWidth : 0
+      const x = ((event.clientX - rect.left) / rect.width) * width
+      const clampedX = Math.min(width, Math.max(0, x))
+      const ratio = width > 0 ? clampedX / width : 0
       const zoomFactor = event.deltaY < 0 ? 0.85 : 1.15
       const nextRangeUnclamped = (viewMaxTick - viewMinTick) * zoomFactor
       const nextRange = Math.max(minZoomRange, Math.min(dataRange, nextRangeUnclamped))
@@ -374,7 +439,6 @@ function LiquidityChart({
     viewMaxTick,
     viewMinTick,
     width,
-    xOffset,
   ])
 
   const findClosestTick = (targetPrice: number) => {
