@@ -1,0 +1,85 @@
+.volume-history-card {
+  display: grid;
+  gap: 14px;
+}
+
+.volume-stats {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.volume-stat {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(31, 26, 22, 0.12);
+  background: #fff;
+}
+
+.volume-stat span {
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.volume-stat strong {
+  font-size: 0.9rem;
+  color: var(--ink);
+}
+
+.volume-state {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.volume-state.error {
+  color: #c0392b;
+}
+
+.volume-chart {
+  position: relative;
+}
+
+.volume-chart-svg {
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+}
+
+.volume-grid-line {
+  stroke: rgba(31, 26, 22, 0.1);
+}
+
+.volume-hover-line {
+  stroke: rgba(31, 26, 22, 0.45);
+  opacity: 0.9;
+}
+
+.volume-tooltip {
+  position: absolute;
+  top: 12px;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(31, 26, 22, 0.18);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
+  font-size: 0.78rem;
+  pointer-events: none;
+  box-shadow: 0 12px 20px rgba(31, 26, 22, 0.12);
+  min-width: 160px;
+}
+
+.volume-tooltip-date {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+@media (max-width: 900px) {
+  .volume-stats {
+    grid-template-columns: 1fr;
+  }
+}

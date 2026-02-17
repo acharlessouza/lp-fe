@@ -92,7 +92,12 @@ export type Pool = {
 }
 
 export type PoolDetail = {
-  id: number
+  id: string
+  dex_key: string
+  dex_name: string
+  dex_version: string
+  chain_key: string
+  chain_name: string
   fee_tier: number
   token0_address: string
   token0_symbol: string
@@ -145,6 +150,28 @@ export type PoolPriceResponse = {
     avg?: number | string
     price?: number | string
   }
+}
+
+export type VolumeHistoryPointResponse = {
+  time: number | string
+  value: number | string
+  fees_usd?: number | string | null
+}
+
+export type VolumeHistorySummaryResponse = {
+  tvl_usd?: number | string | null
+  avg_daily_fees_usd?: number | string | null
+  daily_fees_tvl_pct?: number | string | null
+  avg_daily_volume_usd?: number | string | null
+  daily_volume_tvl_pct?: number | string | null
+  price_volatility_pct?: number | string | null
+  correlation?: number | string | null
+  geometric_mean_price?: number | string | null
+}
+
+export type PoolVolumeHistoryResponse = {
+  volume_history: VolumeHistoryPointResponse[]
+  summary?: VolumeHistorySummaryResponse
 }
 
 export type AllocateResponse = {
@@ -268,7 +295,7 @@ export const getPoolByAddress = (
 
 export const postLiquidityDistribution = (
   payload: {
-    pool_id: number
+    pool_id: number | string
     snapshot_date: string
     current_tick: number
     tick_range: number
@@ -354,6 +381,40 @@ export const getPoolPrice = (params: PoolPriceParams, signal?: AbortSignal) => {
   return fetchJson<PoolPriceResponse>(`/v1/pool-price?${query.toString()}`, { signal })
 }
 
+export const getPoolVolumeHistory = (
+  poolAddress: string,
+  params: {
+    days: number
+    chainId?: number
+    dexId?: number
+    symbol0?: string
+    symbol1?: string
+  },
+  signal?: AbortSignal,
+) => {
+  const query = new URLSearchParams({
+    days: String(params.days),
+  })
+
+  if (Number.isFinite(params.chainId)) {
+    query.set('chainId', String(params.chainId))
+  }
+  if (Number.isFinite(params.dexId)) {
+    query.set('dexId', String(params.dexId))
+  }
+  if (params.symbol0?.trim()) {
+    query.set('symbol0', params.symbol0.trim())
+  }
+  if (params.symbol1?.trim()) {
+    query.set('symbol1', params.symbol1.trim())
+  }
+
+  return fetchJson<PoolVolumeHistoryResponse | VolumeHistoryPointResponse[]>(
+    `/v1/pools/${encodeURIComponent(poolAddress)}/volume-history?${query.toString()}`,
+    { signal },
+  )
+}
+
 export const postSimulateApr = (
   payload: {
     pool_address: string
@@ -369,6 +430,12 @@ export const postSimulateApr = (
     horizon: string
     mode: 'A' | 'B'
     lookback_days: number
+    calculation_method:
+      | 'current'
+      | 'avg_liquidity_in_range'
+      | 'peak_liquidity_in_range'
+      | 'custom'
+    custom_calculation_price?: number | null
   },
   signal?: AbortSignal,
 ) =>
@@ -398,7 +465,7 @@ export const postEstimatedFees = (
 
 export const postMatchTicks = (
   payload: {
-    pool_id: number
+    pool_id: number | string
     min_price: number
     max_price: number
   },

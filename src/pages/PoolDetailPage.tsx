@@ -17,12 +17,30 @@ import {
   postMatchTicks,
   postSimulateApr,
 } from '../services/api'
+import { VolumeSummaryCard } from '../components/VolumeSummaryCard'
+import { VolumeHistoryChart } from '../components/VolumeHistoryChart'
+import { useVolumeHistory } from '../hooks/useVolumeHistory'
 import './PoolDetailPage.css'
 
 type RangeBounds = {
   min: number | null
   max: number | null
 }
+
+type CalculationMethod =
+  | 'current'
+  | 'avg_liquidity_in_range'
+  | 'peak_liquidity_in_range'
+  | 'custom'
+
+const CALCULATION_METHOD_OPTIONS: Array<{ value: CalculationMethod; label: string }> = [
+  { value: 'current', label: 'Current Price' },
+  { value: 'avg_liquidity_in_range', label: 'Average Liquidity' },
+  { value: 'peak_liquidity_in_range', label: 'Peak of Distribution (In-Range)' },
+  { value: 'custom', label: 'Custom Price' },
+]
+
+const DEFAULT_CALCULATION_METHOD: CalculationMethod = 'avg_liquidity_in_range'
 
 type LiquidityChartProps = {
   apiData: LiquidityDistributionResponse | null
@@ -66,7 +84,11 @@ type LiquidityPriceRangeProps = {
   poolTickSpacing: number | null
   minTickValue: number | null
   maxTickValue: number | null
-  poolId: number | null
+  calculationMethod: CalculationMethod
+  setCalculationMethod: (value: CalculationMethod) => void
+  customCalculationPrice: string
+  setCustomCalculationPrice: (value: string) => void
+  poolId: number | string | null
   onMatchTicks?: (data: MatchTicksResponse, matchedMin: string, matchedMax: string) => void
 }
 
@@ -88,6 +110,62 @@ const shortAddress = (address: string) => {
     return address
   }
   return `${address.slice(0, 6)}...${address.slice(-4)}`
+}
+
+const FAVORITE_POOLS_STORAGE_KEY = 'favorite_pools'
+
+const readFavoritePools = () => {
+  if (typeof window === 'undefined') {
+    return [] as string[]
+  }
+  try {
+    const raw = window.localStorage.getItem(FAVORITE_POOLS_STORAGE_KEY)
+    if (!raw) {
+      return [] as string[]
+    }
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) {
+      return [] as string[]
+    }
+    return parsed.filter((item): item is string => typeof item === 'string')
+  } catch {
+    return [] as string[]
+  }
+}
+
+const writeFavoritePools = (items: string[]) => {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.localStorage.setItem(FAVORITE_POOLS_STORAGE_KEY, JSON.stringify(items))
+}
+
+const getPoolExplorerUrl = ({
+  dexKey,
+  chainKey,
+  poolAddress,
+}: {
+  dexKey?: string
+  chainKey?: string
+  poolAddress: string
+}) => {
+  if (!poolAddress || !dexKey?.trim() || !chainKey?.trim()) {
+    return ''
+  }
+  const normalizedDexKey = dexKey.trim().toLowerCase()
+  const normalizedChainKey = chainKey.trim().toLowerCase()
+  if (normalizedDexKey.includes('uniswap')) {
+    return `https://app.uniswap.org/explore/pools/${normalizedChainKey}/${poolAddress}`
+  }
+  return ''
+}
+
+const formatFeeTierPercent = (value: number | string | null | undefined) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return '--'
+  }
+  return `${(numeric / 10000).toFixed(2)}%`
 }
 
 const getSafeNumber = (value: unknown) => {
@@ -219,8 +297,14 @@ function LiquidityChart({
   }
 
   useEffect(() => {
-    if (zoomRangeTicks === null && dataRange > 0) {
+    if (zoomRangeTicks !== null || dataRange <= 0) {
+      return
+    }
+    const timerId = window.setTimeout(() => {
       setZoomRangeTicks(Math.min(dataRange, 20000))
+    }, 0)
+    return () => {
+      window.clearTimeout(timerId)
     }
   }, [dataRange, zoomRangeTicks])
 
@@ -1162,6 +1246,10 @@ function LiquidityPriceRange({
   poolTickSpacing,
   minTickValue,
   maxTickValue,
+  calculationMethod,
+  setCalculationMethod,
+  customCalculationPrice,
+  setCustomCalculationPrice,
   poolId,
   onMatchTicks,
 }: LiquidityPriceRangeProps) {
@@ -1214,6 +1302,7 @@ function LiquidityPriceRange({
   const decimalAdjust = Math.pow(10, resolvedToken0Decimals - resolvedToken1Decimals)
   const minTick = UNISWAP_MIN_TICK
   const maxTick = UNISWAP_MAX_TICK
+  const showCalculationMethod = false
 
   const handleTimeframeChange = (value: string | number) => {
     const parsed = Number(value)
@@ -1344,6 +1433,15 @@ function LiquidityPriceRange({
     }
   }
 
+  const handleCalculationMethodChange = (value: string) => {
+    const selected = CALCULATION_METHOD_OPTIONS.find((option) => option.value === value)
+    const nextMethod = selected?.value ?? DEFAULT_CALCULATION_METHOD
+    setCalculationMethod(nextMethod)
+    if (nextMethod !== 'custom') {
+      setCustomCalculationPrice('')
+    }
+  }
+
   useEffect(() => {
     if (!isFullRange) {
       return
@@ -1357,7 +1455,7 @@ function LiquidityPriceRange({
   }, [isFullRange, rangeMax, rangeMin, setRangeMax, setRangeMin])
 
   const handleMatchTicks = async () => {
-    if (!poolId) {
+    if (poolId === null || poolId === undefined || poolId === '') {
       return
     }
     const parsedMin = parsePriceInput(rangeMin)
@@ -1458,7 +1556,7 @@ function LiquidityPriceRange({
           </label>
         </div>
       </div>
-      <div className="range-meta">
+      <div className={`range-meta${showCalculationMethod ? '' : ' range-meta--single'}`}>
         <div className="range-meta-card">
           <span>Calculation Timeframe (Days)</span>
           <div className="timeframe-controls">
@@ -1477,10 +1575,37 @@ function LiquidityPriceRange({
             </button>
           </div>
         </div>
-        <div className="range-meta-card">
-          <span>Calculation Method</span>
-          <strong>Average Liquidity (Simple)</strong>
-        </div>
+        {showCalculationMethod ? (
+          <div className="range-meta-card">
+            <span>Calculation Method</span>
+            <select
+              value={calculationMethod}
+              onChange={(event) => handleCalculationMethodChange(event.target.value)}
+              aria-label="Calculation Method"
+            >
+              {CALCULATION_METHOD_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            {calculationMethod === 'custom' ? (
+              <div className="custom-calculation-field">
+                <label htmlFor="customCalculationPrice">Custom Calculation Price</label>
+                <input
+                  id="customCalculationPrice"
+                  type="number"
+                  step="any"
+                  min="0"
+                  inputMode="decimal"
+                  value={customCalculationPrice}
+                  onChange={(event) => setCustomCalculationPrice(event.target.value)}
+                  placeholder="0.00"
+                />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
       <div className="range-inputs">
         <div className="range-input">
@@ -1824,17 +1949,32 @@ function PoolDetailPage() {
   const [rangeMin, setRangeMin] = useState('2833,5')
   const [rangeMax, setRangeMax] = useState('3242,4')
   const [depositUsd, setDepositUsd] = useState('1000')
-  const [timeframeDays, setTimeframeDays] = useState(14)
+  const [timeframeDays, setTimeframeDays] = useState(7)
+  const [calculationMethod, setCalculationMethod] = useState<CalculationMethod>(
+    DEFAULT_CALCULATION_METHOD,
+  )
+  const [customCalculationPrice, setCustomCalculationPrice] = useState('')
+  const [isPairInverted, setIsPairInverted] = useState(false)
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'done' | 'error'>('idle')
+  const [isFavoritePool, setIsFavoritePool] = useState(false)
   const distributionTickRange = 20000
 
   const allocateDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const simulateAprDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const distributionDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const defaultRangeKeyRef = useRef<string | null>(null)
+  const initialRangeFetchKeyRef = useRef<string | null>(null)
   const latestRangeRef = useRef<{ min: string; max: string }>({
     min: rangeMin,
     max: rangeMax,
   })
+  const latestDepositRef = useRef(depositUsd)
+  const latestTimeframeRef = useRef(timeframeDays)
+  const latestCalculationMethodRef = useRef<CalculationMethod>(calculationMethod)
+  const latestCustomCalculationPriceRef = useRef(customCalculationPrice)
+  const latestAllocateDataRef = useRef<AllocateResponse | null>(allocateData)
+  const allocateResultKeyRef = useRef<string | null>(null)
+  const lastAprKeyRef = useRef<string | null>(null)
   const hasMountedRef = useRef(false)
   const snapshotDateRef = useRef(new Date().toISOString().slice(0, 10))
 
@@ -1850,6 +1990,8 @@ function PoolDetailPage() {
     distributionData?.pool?.token0 || allocateData?.token0_symbol || pool?.token0_symbol || 'TOKEN0'
   const token1Label =
     distributionData?.pool?.token1 || allocateData?.token1_symbol || pool?.token1_symbol || 'TOKEN1'
+  const displayToken0 = isPairInverted ? token1Label : token0Label
+  const displayToken1 = isPairInverted ? token0Label : token1Label
 
   const feeTier =
     distributionData?.pool?.fee_tier ?? (Number.isFinite(pool?.fee_tier) ? pool?.fee_tier : null)
@@ -1889,6 +2031,47 @@ function PoolDetailPage() {
     () => getPriceTick(parsePriceInput(rangeMax), effectiveTickSpacing, decimalAdjust, false),
     [decimalAdjust, effectiveTickSpacing, rangeMax],
   )
+  const exchangeLabel =
+    pool?.dex_name?.trim() ||
+    exchangeNameParam?.trim() ||
+    (Number.isFinite(exchangeId) ? `Exchange ${exchangeId}` : 'Unknown exchange')
+  const networkLabel =
+    pool?.chain_name?.trim() ||
+    networkNameParam?.trim() ||
+    network.trim() ||
+    (Number.isFinite(chainId) ? `Network ${chainId}` : 'Unknown network')
+  const feeTierLabel = formatFeeTierPercent(feeTier)
+  const poolFavoriteKey = useMemo(() => {
+    if (!normalizedPoolAddress) {
+      return ''
+    }
+    return `${normalizedPoolAddress.toLowerCase()}|${pool?.dex_key ?? exchangeIdParam ?? ''}|${
+      pool?.chain_key ?? networkIdParam ?? network
+    }`
+  }, [exchangeIdParam, network, networkIdParam, normalizedPoolAddress, pool?.chain_key, pool?.dex_key])
+  const poolExplorerUrl = useMemo(
+    () =>
+      getPoolExplorerUrl({
+        dexKey: pool?.dex_key,
+        chainKey: pool?.chain_key,
+        poolAddress: normalizedPoolAddress,
+      }),
+    [normalizedPoolAddress, pool?.chain_key, pool?.dex_key],
+  )
+
+  const {
+    data: volumeHistoryData,
+    loading: volumeHistoryLoading,
+    error: volumeHistoryError,
+    stats: volumeHistoryStats,
+    summary: volumeHistorySummary,
+  } = useVolumeHistory(normalizedPoolAddress, timeframeDays, {
+    chainId: Number.isFinite(chainId) ? chainId : null,
+    dexId: Number.isFinite(exchangeId) ? exchangeId : null,
+    symbol0: pool?.token0_symbol ?? null,
+    symbol1: pool?.token1_symbol ?? null,
+    enabled: showPool && Boolean(normalizedPoolAddress),
+  })
 
   const rangeBounds = useMemo<RangeBounds>(() => {
     const currentPrice = Number(poolPriceData?.status?.price ?? poolPriceData?.stats?.price)
@@ -1933,32 +2116,44 @@ function PoolDetailPage() {
     if (!normalizedPoolAddress || !Number.isFinite(chainId) || !Number.isFinite(exchangeId)) {
       return
     }
-    const parsedMin = parsePriceInput(rangeMin)
-    const parsedMax = parsePriceInput(rangeMax)
+
+    const { min: minValue, max: maxValue } = latestRangeRef.current
+    const amountValue = latestDepositRef.current
+
+    const parsedMin = parsePriceInput(minValue)
+    const parsedMax = parsePriceInput(maxValue)
     if (!Number.isFinite(parsedMin) || !Number.isFinite(parsedMax)) {
       return
     }
+
+    const requestKey = `${normalizedPoolAddress}|${chainId}|${exchangeId}|${amountValue}|${parsedMin}|${parsedMax}`
+
     setAllocateLoading(true)
     setAllocateError('')
+    // mark as not ready for APR until this allocation completes
+    allocateResultKeyRef.current = null
+
     try {
       const payload = {
         pool_address: normalizedPoolAddress,
         chain_id: chainId,
         dex_id: exchangeId,
-        amount: depositUsd,
+        amount: amountValue,
         range1: String(parsedMin),
         range2: String(parsedMax),
       }
       const data = await postAllocate(payload)
       setAllocateData(data)
+      allocateResultKeyRef.current = requestKey
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load allocation.'
       setAllocateError(message)
       setAllocateData(null)
+      allocateResultKeyRef.current = null
     } finally {
       setAllocateLoading(false)
     }
-  }, [chainId, depositUsd, exchangeId, normalizedPoolAddress, rangeMax, rangeMin])
+  }, [chainId, exchangeId, normalizedPoolAddress])
 
   const fetchPoolPrice = useCallback(async () => {
     if (
@@ -2029,24 +2224,108 @@ function PoolDetailPage() {
     latestRangeRef.current = { min: rangeMin, max: rangeMax }
   }, [rangeMax, rangeMin])
 
+  useEffect(() => {
+    latestDepositRef.current = depositUsd
+  }, [depositUsd])
+
+  useEffect(() => {
+    latestTimeframeRef.current = timeframeDays
+  }, [timeframeDays])
+
+  useEffect(() => {
+    latestCalculationMethodRef.current = calculationMethod
+  }, [calculationMethod])
+
+  useEffect(() => {
+    latestCustomCalculationPriceRef.current = customCalculationPrice
+  }, [customCalculationPrice])
+
+  useEffect(() => {
+    if (calculationMethod !== 'custom' && customCalculationPrice !== '') {
+      setCustomCalculationPrice('')
+    }
+  }, [calculationMethod, customCalculationPrice])
+
+  useEffect(() => {
+    if (copyStatus === 'idle') {
+      return
+    }
+    const timerId = window.setTimeout(() => {
+      setCopyStatus('idle')
+    }, 1600)
+    return () => {
+      window.clearTimeout(timerId)
+    }
+  }, [copyStatus])
+
+  useEffect(() => {
+    if (!poolFavoriteKey) {
+      setIsFavoritePool(false)
+      return
+    }
+    const favorites = readFavoritePools()
+    setIsFavoritePool(favorites.includes(poolFavoriteKey))
+  }, [poolFavoriteKey])
+
+  useEffect(() => {
+    latestAllocateDataRef.current = allocateData
+  }, [allocateData])
+
   const fetchSimulateApr = useCallback(async () => {
     if (!normalizedPoolAddress || !Number.isFinite(chainId) || !Number.isFinite(exchangeId)) {
       return
     }
-    const parsedDays = Math.max(1, Math.round(timeframeDays))
-    const parsedDeposit = Number(depositUsd)
+
+    const { min: minValue, max: maxValue } = latestRangeRef.current
+    const depositValue = latestDepositRef.current
+    const daysValue = latestTimeframeRef.current
+    const selectedCalculationMethod = latestCalculationMethodRef.current
+    const customPriceValueRaw = latestCustomCalculationPriceRef.current
+    const alloc = latestAllocateDataRef.current
+
+    const parsedDays = Math.max(1, Math.round(daysValue))
+    const parsedDeposit = Number(depositValue)
     const hasDeposit = Number.isFinite(parsedDeposit) && parsedDeposit > 0
-    const parsedMin = parsePriceInput(rangeMin)
-    const parsedMax = parsePriceInput(rangeMax)
+
+    const parsedMin = parsePriceInput(minValue)
+    const parsedMax = parsePriceInput(maxValue)
     const hasPriceRange = Number.isFinite(parsedMin) && Number.isFinite(parsedMax)
-    const amountToken0 = getSafeNumber(allocateData?.amount_token0)
-    const amountToken1 = getSafeNumber(allocateData?.amount_token1)
-    const hasAmountToken0 = Number.isFinite(amountToken0) && amountToken0 > 0
-    const hasAmountToken1 = Number.isFinite(amountToken1) && amountToken1 > 0
 
     if (!hasPriceRange) {
       return
     }
+
+    let customCalculationPriceValue: number | null = null
+    if (selectedCalculationMethod === 'custom') {
+      const parsedCustomCalculationPrice = parsePriceInput(customPriceValueRaw)
+      if (
+        !Number.isFinite(parsedCustomCalculationPrice) ||
+        parsedCustomCalculationPrice <= 0
+      ) {
+        setSimulateAprError('Custom calculation price must be greater than 0.')
+        setSimulateAprData(null)
+        lastAprKeyRef.current = null
+        return
+      }
+      customCalculationPriceValue = parsedCustomCalculationPrice
+    }
+
+    // Only run APR when the allocation result matches the current inputs.
+    const requestKey = `${normalizedPoolAddress}|${chainId}|${exchangeId}|${depositValue}|${parsedMin}|${parsedMax}`
+    if (allocateResultKeyRef.current !== requestKey) {
+      return
+    }
+
+    const amountToken0 = getSafeNumber(alloc?.amount_token0)
+    const amountToken1 = getSafeNumber(alloc?.amount_token1)
+    const hasAmountToken0 = Number.isFinite(amountToken0) && amountToken0 > 0
+    const hasAmountToken1 = Number.isFinite(amountToken1) && amountToken1 > 0
+
+    const aprKey = `${requestKey}|${parsedDays}|${amountToken0}|${amountToken1}|${selectedCalculationMethod}|${customCalculationPriceValue ?? ''}`
+    if (lastAprKeyRef.current === aprKey) {
+      return
+    }
+    lastAprKeyRef.current = aprKey
 
     const payload = {
       pool_address: normalizedPoolAddress,
@@ -2062,6 +2341,10 @@ function PoolDetailPage() {
       horizon: `${parsedDays}d`,
       mode: 'B' as const,
       lookback_days: parsedDays,
+      calculation_method: selectedCalculationMethod,
+      ...(selectedCalculationMethod === 'custom'
+        ? { custom_calculation_price: customCalculationPriceValue }
+        : {}),
     }
 
     setSimulateAprLoading(true)
@@ -2073,19 +2356,12 @@ function PoolDetailPage() {
       const message = err instanceof Error ? err.message : 'Failed to simulate APR.'
       setSimulateAprError(message)
       setSimulateAprData(null)
+      // allow retry
+      lastAprKeyRef.current = null
     } finally {
       setSimulateAprLoading(false)
     }
-  }, [
-    allocateData,
-    chainId,
-    depositUsd,
-    exchangeId,
-    normalizedPoolAddress,
-    rangeMax,
-    rangeMin,
-    timeframeDays,
-  ])
+  }, [chainId, exchangeId, normalizedPoolAddress])
 
   useEffect(() => {
     defaultRangeKeyRef.current = null
@@ -2142,9 +2418,17 @@ function PoolDetailPage() {
     if (!showPool || !pool) {
       return
     }
+
+    // Fetch once when the pool context becomes ready (or when switching pools).
+    // Avoid re-fetching here on every range change; range-driven refresh is handled by the debounced effects.
+    if (initialRangeFetchKeyRef.current === activeKey) {
+      return
+    }
+
+    initialRangeFetchKeyRef.current = activeKey
     fetchDistribution()
     fetchAllocate()
-  }, [fetchAllocate, fetchDistribution, pool, showPool])
+  }, [activeKey, fetchAllocate, fetchDistribution, pool, showPool])
 
   useEffect(() => {
     if (!showPool || !pool) {
@@ -2175,7 +2459,7 @@ function PoolDetailPage() {
         clearTimeout(allocateDebounceRef.current)
       }
     }
-  }, [depositUsd, fetchAllocate, pool, showPool])
+  }, [depositUsd, rangeMin, rangeMax, fetchAllocate, pool, showPool])
 
   useEffect(() => {
     if (!showPool || !pool) {
@@ -2192,7 +2476,18 @@ function PoolDetailPage() {
         clearTimeout(simulateAprDebounceRef.current)
       }
     }
-  }, [fetchSimulateApr, pool, showPool])
+  }, [
+    allocateData,
+    depositUsd,
+    rangeMin,
+    rangeMax,
+    timeframeDays,
+    calculationMethod,
+    customCalculationPrice,
+    fetchSimulateApr,
+    pool,
+    showPool,
+  ])
 
   useEffect(() => {
     if (!showPool) {
@@ -2205,13 +2500,6 @@ function PoolDetailPage() {
     }
   }, [matchedRangeKey, rangeMax, rangeMin, showPool])
 
-  const pairLabel = useMemo(() => {
-    if (!showPool || !pool) {
-      return 'Pool details'
-    }
-    return `${pool.token0_symbol} / ${pool.token1_symbol}`
-  }, [pool, showPool])
-
   const handleMatchTicks = (data: MatchTicksResponse, matchedMin: string, matchedMax: string) => {
     const currentMatched = Number(data.current_price_matched)
     if (Number.isFinite(currentMatched)) {
@@ -2220,21 +2508,199 @@ function PoolDetailPage() {
     setMatchedRangeKey(`${matchedMin}|${matchedMax}`)
   }
 
+  const handleToggleFavoritePool = () => {
+    if (!poolFavoriteKey) {
+      return
+    }
+    const favorites = readFavoritePools()
+    const exists = favorites.includes(poolFavoriteKey)
+    const nextFavorites = exists
+      ? favorites.filter((item) => item !== poolFavoriteKey)
+      : [...favorites, poolFavoriteKey]
+    writeFavoritePools(nextFavorites)
+    setIsFavoritePool(!exists)
+  }
+
+  const handleCopyPoolAddress = async () => {
+    if (!normalizedPoolAddress) {
+      return
+    }
+
+    const copyWithFallback = () => {
+      try {
+        const textArea = document.createElement('textarea')
+        textArea.value = normalizedPoolAddress
+        textArea.setAttribute('readonly', '')
+        textArea.style.position = 'absolute'
+        textArea.style.left = '-9999px'
+        document.body.appendChild(textArea)
+        textArea.select()
+        const copied = document.execCommand('copy')
+        document.body.removeChild(textArea)
+        return copied
+      } catch {
+        return false
+      }
+    }
+
+    let copied = false
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(normalizedPoolAddress)
+        copied = true
+      } catch {
+        copied = false
+      }
+    }
+
+    if (!copied) {
+      copied = copyWithFallback()
+    }
+
+    setCopyStatus(copied ? 'done' : 'error')
+  }
+
   return (
     <main className="pool-detail">
       <header className="pool-detail-header">
-        <div>
+        <div className="pool-header-main">
           <Link className="back-link" to={backHref}>
             &larr; Back to pools
           </Link>
-          <h1>{pairLabel}</h1>
-          <p>
-            Pool address: <span className="mono">{shortAddress(normalizedPoolAddress)}</span>
-          </p>
-        </div>
-        <div className="header-badges">
-          <span className="badge">Network {network || '--'}</span>
-          <span className="badge">Exchange ID {exchangeIdParam ?? '--'}</span>
+          <div className="pool-info-row">
+            <span className="pool-pair-token">{displayToken0}</span>
+            <button
+              type="button"
+              className="icon-button"
+              onClick={() => setIsPairInverted((prev) => !prev)}
+              aria-label="Switch token direction"
+              title="Switch token direction"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M4 8h13m0 0-3-3m3 3-3 3M20 16H7m0 0 3-3m-3 3 3 3"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="1.8"
+                />
+              </svg>
+            </button>
+            <span className="pool-pair-token">{displayToken1}</span>
+            <span className="badge">Exchange: {exchangeLabel}</span>
+            <span className="badge">Network: {networkLabel}</span>
+            <span className="badge">Fee Tier: {feeTierLabel}</span>
+            <span className="badge badge-address">
+              Pool: <span className="mono">{shortAddress(normalizedPoolAddress)}</span>
+              <button
+                type="button"
+                className={`icon-button icon-button--small${
+                  copyStatus === 'done'
+                    ? ' icon-button--success'
+                    : copyStatus === 'error'
+                      ? ' icon-button--error'
+                      : ''
+                }`}
+                onClick={handleCopyPoolAddress}
+                aria-label="Copy pool address"
+                title={
+                  copyStatus === 'done'
+                    ? 'Copied'
+                    : copyStatus === 'error'
+                      ? 'Copy failed'
+                      : 'Copy pool address'
+                }
+              >
+                {copyStatus === 'done' ? (
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M5 13.5 9.5 18 19 7.5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                    />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <rect
+                      x="9"
+                      y="9"
+                      width="11"
+                      height="11"
+                      rx="2"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.7"
+                    />
+                    <rect
+                      x="4"
+                      y="4"
+                      width="11"
+                      height="11"
+                      rx="2"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.7"
+                    />
+                  </svg>
+                )}
+              </button>
+            </span>
+            {poolExplorerUrl ? (
+              <a
+                className="icon-button"
+                href={poolExplorerUrl}
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Open pool on exchange"
+                title="Open pool on exchange"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M9 15 20 4m0 0h-7m7 0v7M20 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h6"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.8"
+                  />
+                </svg>
+              </a>
+            ) : (
+              <button
+                type="button"
+                className="icon-button"
+                disabled
+                aria-label="Open pool unavailable"
+                title="Open pool unavailable"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M9 15 20 4m0 0h-7m7 0v7M20 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h6"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.8"
+                  />
+                </svg>
+              </button>
+            )}
+            <button
+              type="button"
+              className={`icon-button favorite-icon-button${isFavoritePool ? ' is-active' : ''}`}
+              onClick={handleToggleFavoritePool}
+              aria-label={isFavoritePool ? 'Unfavorite pool' : 'Favorite pool'}
+              title={isFavoritePool ? 'Unfavorite pool' : 'Favorite pool'}
+            >
+              <svg className="star-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m12 3.5 2.6 5.27 5.82.85-4.21 4.1.99 5.79L12 16.76 6.8 19.51l.99-5.79-4.21-4.1 5.82-.85L12 3.5z" />
+              </svg>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -2271,6 +2737,10 @@ function PoolDetailPage() {
               poolTickSpacing={poolTickSpacing}
               minTickValue={minTickValue}
               maxTickValue={maxTickValue}
+              calculationMethod={calculationMethod}
+              setCalculationMethod={setCalculationMethod}
+              customCalculationPrice={customCalculationPrice}
+              setCustomCalculationPrice={setCustomCalculationPrice}
               poolId={pool?.id ?? null}
               onMatchTicks={handleMatchTicks}
             />
@@ -2282,6 +2752,11 @@ function PoolDetailPage() {
               allocateData={allocateData}
               loading={allocateLoading}
               error={allocateError}
+            />
+            <VolumeSummaryCard
+              summary={volumeHistorySummary}
+              loading={volumeHistoryLoading}
+              error={volumeHistoryError}
             />
           </div>
           <div className="stack">
@@ -2303,6 +2778,12 @@ function PoolDetailPage() {
               token0={token0Label}
               token1={token1Label}
               currentPriceOverride={matchedCurrentPrice}
+            />
+            <VolumeHistoryChart
+              data={volumeHistoryData}
+              loading={volumeHistoryLoading}
+              error={volumeHistoryError}
+              stats={volumeHistoryStats}
             />
           </div>
         </div>
