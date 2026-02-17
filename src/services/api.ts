@@ -340,6 +340,7 @@ export const postAllocate = (
     amount: string
     range1: string
     range2: string
+    full_range: boolean
   },
   signal?: AbortSignal,
 ) =>
@@ -427,6 +428,7 @@ export const postSimulateApr = (
     tick_upper: number | null
     min_price: number | null
     max_price: number | null
+    full_range: boolean
     horizon: string
     mode: 'A' | 'B'
     lookback_days: number

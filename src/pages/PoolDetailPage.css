@@ -668,13 +668,6 @@
   font-size: 0.9rem;
 }
 
-.split-labels {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.75rem;
-  color: var(--muted);
-}
-
 .token-rows {
   display: grid;
   gap: 12px;
@@ -695,12 +688,29 @@
   font-size: 0.75rem;
 }
 
+.token-main {
+  display: grid;
+  gap: 4px;
+}
+
+.token-symbol {
+  display: block;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.token-allocation {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
 .token-value {
   text-align: right;
 }
 
 .token-value strong {
-  display: block;
+  display: inline-block;
   color: var(--ink);
   font-size: 0.9rem;
 }

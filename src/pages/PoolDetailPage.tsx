@@ -75,6 +75,8 @@ type LiquidityPriceRangeProps = {
   rangeMax: string
   setRangeMin: (value: string) => void
   setRangeMax: (value: string) => void
+  isFullRange: boolean
+  setIsFullRange: (value: boolean) => void
   bounds: RangeBounds
   timeframeDays: number
   setTimeframeDays: (value: number) => void
@@ -195,6 +197,17 @@ const parsePriceInput = (value: string) => {
   const normalized = trimmed.replace(/\s/g, '').replace(',', '.')
   const parsed = Number(normalized)
   return Number.isFinite(parsed) ? parsed : Number.NaN
+}
+
+const FULL_RANGE_MIN_INPUT = '0'
+const FULL_RANGE_MAX_INPUT = '∞'
+
+const resolveRangeValue = (value: string, fallback: number | null) => {
+  const parsed = parsePriceInput(value)
+  if (Number.isFinite(parsed)) {
+    return parsed
+  }
+  return Number.isFinite(fallback) ? (fallback as number) : Number.NaN
 }
 
 const formatRangeNumber = (value: number) => value.toFixed(6).replace('.', ',')
@@ -1237,6 +1250,8 @@ function LiquidityPriceRange({
   rangeMax,
   setRangeMin,
   setRangeMax,
+  isFullRange,
+  setIsFullRange,
   bounds,
   timeframeDays,
   setTimeframeDays,
@@ -1253,8 +1268,8 @@ function LiquidityPriceRange({
   poolId,
   onMatchTicks,
 }: LiquidityPriceRangeProps) {
-  const [isFullRange, setIsFullRange] = useState(false)
   const [isMatching, setIsMatching] = useState(false)
+  const fullRangePreviousRef = useRef<{ min: string; max: string } | null>(null)
   const minInputInitialValueRef = useRef<string | null>(null)
   const maxInputInitialValueRef = useRef<string | null>(null)
   const minInputDirtyRef = useRef(false)
@@ -1421,15 +1436,19 @@ function LiquidityPriceRange({
   }
 
   const toggleFullRange = (nextValue: boolean) => {
-    setIsFullRange(nextValue)
     if (nextValue) {
-      setRangeMin('0')
-      setRangeMax('∞')
+      fullRangePreviousRef.current = { min: rangeMin, max: rangeMax }
+      setRangeMin(FULL_RANGE_MIN_INPUT)
+      setRangeMax(FULL_RANGE_MAX_INPUT)
+      setIsFullRange(true)
       return
     }
-    if (hasBounds && Number.isFinite(minBound) && Number.isFinite(maxBound)) {
-      setRangeMin(formatRangeValue(minBound))
-      setRangeMax(formatRangeValue(maxBound))
+    setIsFullRange(false)
+    const previousRange = fullRangePreviousRef.current
+    fullRangePreviousRef.current = null
+    if (previousRange) {
+      setRangeMin(previousRange.min)
+      setRangeMax(previousRange.max)
     }
   }
 
@@ -1446,11 +1465,11 @@ function LiquidityPriceRange({
     if (!isFullRange) {
       return
     }
-    if (rangeMin !== '0') {
-      setRangeMin('0')
+    if (rangeMin !== FULL_RANGE_MIN_INPUT) {
+      setRangeMin(FULL_RANGE_MIN_INPUT)
     }
-    if (rangeMax !== '∞') {
-      setRangeMax('∞')
+    if (rangeMax !== FULL_RANGE_MAX_INPUT) {
+      setRangeMax(FULL_RANGE_MAX_INPUT)
     }
   }, [isFullRange, rangeMax, rangeMin, setRangeMax, setRangeMin])
 
@@ -1463,6 +1482,7 @@ function LiquidityPriceRange({
     if (!Number.isFinite(parsedMin) || !Number.isFinite(parsedMax)) {
       return
     }
+    fullRangePreviousRef.current = null
     setIsFullRange(false)
     setIsMatching(true)
     try {
@@ -1816,14 +1836,15 @@ function DepositAmount({
   loading,
   error,
 }: DepositAmountProps) {
-  const parsedDeposit = Number(depositUsd)
-  const totalUsd = Number.isFinite(parsedDeposit) ? parsedDeposit : 0
   const amount0 = allocateData ? Number(allocateData.amount_token0) : 0
   const amount1 = allocateData ? Number(allocateData.amount_token1) : 0
   const price0 = allocateData ? Number(allocateData.price_token0_usd) : 0
   const price1 = allocateData ? Number(allocateData.price_token1_usd) : 0
   const token0Usd = amount0 * price0
   const token1Usd = amount1 * price1
+  const allocatedUsdTotal = token0Usd + token1Usd
+  const token0SharePct = allocatedUsdTotal > 0 ? (token0Usd / allocatedUsdTotal) * 100 : 0
+  const token1SharePct = allocatedUsdTotal > 0 ? (token1Usd / allocatedUsdTotal) * 100 : 0
 
   return (
     <div className="card deposit-card">
@@ -1841,29 +1862,27 @@ function DepositAmount({
       </div>
       <div className="token-rows">
         <div className="token-row">
-          <div>
-            {token0}
-            <span>Amount</span>
+          <div className="token-main">
+            <strong className="token-symbol">{token0}</strong>
+            <span className="token-allocation">
+              {amount0.toFixed(4)} ({token0SharePct.toFixed(2)}%)
+            </span>
           </div>
           <div className="token-value">
-            <strong>{amount0.toFixed(6)}</strong>
-            <span>${token0Usd.toFixed(2)}</span>
+            <strong>${token0Usd.toFixed(2)}</strong>
           </div>
         </div>
         <div className="token-row">
-          <div>
-            {token1}
-            <span>Amount</span>
+          <div className="token-main">
+            <strong className="token-symbol">{token1}</strong>
+            <span className="token-allocation">
+              {amount1.toFixed(4)} ({token1SharePct.toFixed(2)}%)
+            </span>
           </div>
           <div className="token-value">
-            <strong>{amount1.toFixed(6)}</strong>
-            <span>${token1Usd.toFixed(2)}</span>
+            <strong>${token1Usd.toFixed(2)}</strong>
           </div>
         </div>
-      </div>
-      <div className="split-labels">
-        <span>Input USD: ${totalUsd.toFixed(2)}</span>
-        <span>Output USD: ${(token0Usd + token1Usd).toFixed(2)}</span>
       </div>
     </div>
   )
@@ -1948,6 +1967,7 @@ function PoolDetailPage() {
 
   const [rangeMin, setRangeMin] = useState('2833,5')
   const [rangeMax, setRangeMax] = useState('3242,4')
+  const [isFullRange, setIsFullRange] = useState(false)
   const [depositUsd, setDepositUsd] = useState('1000')
   const [timeframeDays, setTimeframeDays] = useState(7)
   const [calculationMethod, setCalculationMethod] = useState<CalculationMethod>(
@@ -2084,6 +2104,17 @@ function PoolDetailPage() {
     return { min: null, max: null }
   }, [poolPriceData])
 
+  const resolveRequestRange = useCallback(
+    (minValue: string, maxValue: string, isFullRangeSelected: boolean) => {
+      const fallbackMin = isFullRangeSelected ? rangeBounds.min : null
+      const fallbackMax = isFullRangeSelected ? rangeBounds.max : null
+      const parsedMin = resolveRangeValue(minValue, fallbackMin)
+      const parsedMax = resolveRangeValue(maxValue, fallbackMax)
+      return { parsedMin, parsedMax }
+    },
+    [rangeBounds.max, rangeBounds.min],
+  )
+
   const fetchDistribution = useCallback(async () => {
     if (!pool) {
       return
@@ -2091,8 +2122,7 @@ function PoolDetailPage() {
     setDistributionLoading(true)
     setDistributionError('')
     try {
-      const parsedMin = parsePriceInput(rangeMin)
-      const parsedMax = parsePriceInput(rangeMax)
+      const { parsedMin, parsedMax } = resolveRequestRange(rangeMin, rangeMax, isFullRange)
       const payload = {
         pool_id: pool.id,
         snapshot_date: snapshotDateRef.current,
@@ -2110,7 +2140,7 @@ function PoolDetailPage() {
     } finally {
       setDistributionLoading(false)
     }
-  }, [pool, rangeMax, rangeMin])
+  }, [isFullRange, pool, rangeMax, rangeMin, resolveRequestRange])
 
   const fetchAllocate = useCallback(async () => {
     if (!normalizedPoolAddress || !Number.isFinite(chainId) || !Number.isFinite(exchangeId)) {
@@ -2120,13 +2150,12 @@ function PoolDetailPage() {
     const { min: minValue, max: maxValue } = latestRangeRef.current
     const amountValue = latestDepositRef.current
 
-    const parsedMin = parsePriceInput(minValue)
-    const parsedMax = parsePriceInput(maxValue)
+    const { parsedMin, parsedMax } = resolveRequestRange(minValue, maxValue, isFullRange)
     if (!Number.isFinite(parsedMin) || !Number.isFinite(parsedMax)) {
       return
     }
 
-    const requestKey = `${normalizedPoolAddress}|${chainId}|${exchangeId}|${amountValue}|${parsedMin}|${parsedMax}`
+    const requestKey = `${normalizedPoolAddress}|${chainId}|${exchangeId}|${amountValue}|${parsedMin}|${parsedMax}|${isFullRange}`
 
     setAllocateLoading(true)
     setAllocateError('')
@@ -2141,6 +2170,7 @@ function PoolDetailPage() {
         amount: amountValue,
         range1: String(parsedMin),
         range2: String(parsedMax),
+        full_range: isFullRange,
       }
       const data = await postAllocate(payload)
       setAllocateData(data)
@@ -2153,7 +2183,7 @@ function PoolDetailPage() {
     } finally {
       setAllocateLoading(false)
     }
-  }, [chainId, exchangeId, normalizedPoolAddress])
+  }, [chainId, exchangeId, isFullRange, normalizedPoolAddress, resolveRequestRange])
 
   const fetchPoolPrice = useCallback(async () => {
     if (
@@ -2287,8 +2317,7 @@ function PoolDetailPage() {
     const parsedDeposit = Number(depositValue)
     const hasDeposit = Number.isFinite(parsedDeposit) && parsedDeposit > 0
 
-    const parsedMin = parsePriceInput(minValue)
-    const parsedMax = parsePriceInput(maxValue)
+    const { parsedMin, parsedMax } = resolveRequestRange(minValue, maxValue, isFullRange)
     const hasPriceRange = Number.isFinite(parsedMin) && Number.isFinite(parsedMax)
 
     if (!hasPriceRange) {
@@ -2311,7 +2340,7 @@ function PoolDetailPage() {
     }
 
     // Only run APR when the allocation result matches the current inputs.
-    const requestKey = `${normalizedPoolAddress}|${chainId}|${exchangeId}|${depositValue}|${parsedMin}|${parsedMax}`
+    const requestKey = `${normalizedPoolAddress}|${chainId}|${exchangeId}|${depositValue}|${parsedMin}|${parsedMax}|${isFullRange}`
     if (allocateResultKeyRef.current !== requestKey) {
       return
     }
@@ -2338,6 +2367,7 @@ function PoolDetailPage() {
       tick_upper: null,
       min_price: parsedMin,
       max_price: parsedMax,
+      full_range: isFullRange,
       horizon: `${parsedDays}d`,
       mode: 'B' as const,
       lookback_days: parsedDays,
@@ -2361,7 +2391,7 @@ function PoolDetailPage() {
     } finally {
       setSimulateAprLoading(false)
     }
-  }, [chainId, exchangeId, normalizedPoolAddress])
+  }, [chainId, exchangeId, isFullRange, normalizedPoolAddress, resolveRequestRange])
 
   useEffect(() => {
     defaultRangeKeyRef.current = null
@@ -2369,6 +2399,7 @@ function PoolDetailPage() {
     setSimulateAprData(null)
     setSimulateAprError('')
     setSimulateAprLoading(false)
+    setIsFullRange(false)
   }, [activeKey])
 
   useEffect(() => {
@@ -2728,6 +2759,8 @@ function PoolDetailPage() {
               rangeMax={rangeMax}
               setRangeMin={setRangeMin}
               setRangeMax={setRangeMax}
+              isFullRange={isFullRange}
+              setIsFullRange={setIsFullRange}
               bounds={rangeBounds}
               timeframeDays={timeframeDays}
               setTimeframeDays={setTimeframeDays}
