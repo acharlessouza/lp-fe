@@ -120,11 +120,25 @@ export type LiquidityDistributionResponse = {
   current_tick?: number
 }
 
+export type LiquidityDistributionDefaultRangeResponse = {
+  min_price: number | string
+  max_price: number | string
+  min_tick?: number | string
+  max_tick?: number | string
+  tick_spacing?: number | string
+}
+
 export type PoolPriceResponse = {
   series?: Array<{
     timestamp: string
     price: number | string
   }>
+  status?: {
+    min?: number | string
+    max?: number | string
+    avg?: number | string
+    price?: number | string
+  }
   stats?: {
     min?: number | string
     max?: number | string
@@ -153,6 +167,25 @@ export type EstimatedFeesResponse = {
   yearly?: {
     value?: number | string
     apr?: number | string
+  }
+}
+
+export type SimulateAprResponse = {
+  estimated_fees_24h_usd?: number | string
+  monthly_usd?: number | string
+  yearly_usd?: number | string
+  fee_apr?: number | string
+  diagnostics?: {
+    hours_total?: number
+    hours_in_range?: number
+    percent_time_in_range?: number | string
+    avg_share_in_range?: number | string
+    assumptions?: {
+      mode?: string
+      annualization?: string
+      horizon_hours?: number | string
+    }
+    warnings?: string[]
   }
 }
 
@@ -222,14 +255,14 @@ export const getPools = (
 
 export const getPoolByAddress = (
   poolAddress: string,
-  network: string,
+  chainId: number,
   exchangeId: number,
   signal?: AbortSignal,
 ) =>
   fetchJson<PoolDetail>(
     `/v1/pools/by-address/${encodeURIComponent(
       poolAddress,
-    )}?network=${encodeURIComponent(network)}&exchange_id=${exchangeId}`,
+    )}?chain_id=${chainId}&exchange_id=${exchangeId}`,
     { signal },
   )
 
@@ -250,10 +283,33 @@ export const postLiquidityDistribution = (
     signal,
   })
 
+export const postLiquidityDistributionDefaultRange = (
+  payload: {
+    pool_id: string
+    chain_id: number
+    dex_id: number
+    snapshot_date: string
+    preset: string
+    initial_price: number
+    center_tick: number | null
+    swapped_pair: boolean
+  },
+  signal?: AbortSignal,
+) =>
+  fetchJson<LiquidityDistributionDefaultRangeResponse>(
+    '/v1/liquidity-distribution/default-range',
+    {
+      method: 'POST',
+      body: payload,
+      signal,
+    },
+  )
+
 export const postAllocate = (
   payload: {
     pool_address: string
-    rede: string
+    chain_id: number
+    dex_id: number
     amount: string
     range1: string
     range2: string
@@ -266,15 +322,61 @@ export const postAllocate = (
     signal,
   })
 
-export const getPoolPrice = (
-  poolId: number,
-  days: number,
+type PoolPriceParams =
+  | {
+      poolAddress: string
+      chainId: number
+      dexId: number
+      days: number
+    }
+  | {
+      poolAddress: string
+      chainId: number
+      dexId: number
+      start: string
+      end: string
+    }
+
+export const getPoolPrice = (params: PoolPriceParams, signal?: AbortSignal) => {
+  const query = new URLSearchParams({
+    pool_address: params.poolAddress,
+    chain_id: String(params.chainId),
+    dex_id: String(params.dexId),
+  })
+
+  if ('days' in params) {
+    query.set('days', String(params.days))
+  } else {
+    query.set('start', params.start)
+    query.set('end', params.end)
+  }
+
+  return fetchJson<PoolPriceResponse>(`/v1/pool-price?${query.toString()}`, { signal })
+}
+
+export const postSimulateApr = (
+  payload: {
+    pool_address: string
+    chain_id: number
+    dex_id: number
+    deposit_usd?: string
+    amount_token0?: string
+    amount_token1?: string
+    tick_lower: number | null
+    tick_upper: number | null
+    min_price: number | null
+    max_price: number | null
+    horizon: string
+    mode: 'A' | 'B'
+    lookback_days: number
+  },
   signal?: AbortSignal,
 ) =>
-  fetchJson<PoolPriceResponse>(
-    `/v1/pool-price?pool_id=${poolId}&days=${days}`,
-    { signal },
-  )
+  fetchJson<SimulateAprResponse>('/v1/simulate/apr', {
+    method: 'POST',
+    body: payload,
+    signal,
+  })
 
 export const postEstimatedFees = (
   payload: {

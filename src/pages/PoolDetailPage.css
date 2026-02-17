@@ -517,13 +517,6 @@
   transform: translate(-50%, -50%);
 }
 
-.range-values {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.75rem;
-  color: var(--muted);
-}
-
 .deposit-card {
   display: grid;
   gap: 16px;

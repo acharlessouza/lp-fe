@@ -679,6 +679,8 @@
       const REQUEST = {
         poolId: 572,
         poolAddress: "0x4e68ccd3e89f51c3074ca5072bbac773960dfa36",
+        chainId: 1,
+        dexId: 1,
         rede: "ethereum",
         snapshotDate: "2025-12-24",
         currentTick: 0,
@@ -1564,7 +1566,7 @@
         const hasMountedRef = useRef(false);
 
         const apiUrl = "http://localhost:8000/api/liquidity-distribution";
-        const poolPriceUrl = "http://localhost:8000/api/pool-price";
+        const poolPriceUrl = "http://localhost:8000/v1/pool-price";
         const estimatedFeesUrl = "http://localhost:8000/api/estimated-fees";
         const allocateUrl = "http://localhost:8000/v1/allocate";
         const token = "dev-token";
@@ -1643,7 +1645,7 @@
           setPoolPriceError("");
           try {
             const response = await fetch(
-              `${poolPriceUrl}?pool_id=${REQUEST.poolId}&days=${timeframeDays}`,
+              `${poolPriceUrl}?pool_address=${REQUEST.poolAddress}&chain_id=${REQUEST.chainId}&dex_id=${REQUEST.dexId}&days=${timeframeDays}`,
               {
                 method: "GET",
                 headers: {

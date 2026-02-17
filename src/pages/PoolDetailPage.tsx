@@ -2,19 +2,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import type {
   AllocateResponse,
-  EstimatedFeesResponse,
   LiquidityDistributionResponse,
   MatchTicksResponse,
   PoolDetail,
   PoolPriceResponse,
+  SimulateAprResponse,
 } from '../services/api'
 import {
   getPoolByAddress,
   getPoolPrice,
   postAllocate,
-  postEstimatedFees,
+  postLiquidityDistributionDefaultRange,
   postLiquidityDistribution,
   postMatchTicks,
+  postSimulateApr,
 } from '../services/api'
 import './PoolDetailPage.css'
 
@@ -45,9 +46,10 @@ type PoolPriceChartProps = {
 }
 
 type EstimatedFeesProps = {
-  data: EstimatedFeesResponse | null
+  data: SimulateAprResponse | null
   loading: boolean
   error: string
+  depositUsd: string
 }
 
 type LiquidityPriceRangeProps = {
@@ -61,6 +63,9 @@ type LiquidityPriceRangeProps = {
   feeTier: number | null
   token0Decimals: number | null
   token1Decimals: number | null
+  poolTickSpacing: number | null
+  minTickValue: number | null
+  maxTickValue: number | null
   poolId: number | null
   onMatchTicks?: (data: MatchTicksResponse, matchedMin: string, matchedMax: string) => void
 }
@@ -104,6 +109,51 @@ const getSafeNumber = (value: unknown) => {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+const parsePriceInput = (value: string) => {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return Number.NaN
+  }
+  const normalized = trimmed.replace(/\s/g, '').replace(',', '.')
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) ? parsed : Number.NaN
+}
+
+const formatRangeNumber = (value: number) => value.toFixed(6).replace('.', ',')
+const UNISWAP_MIN_TICK = -887272
+const UNISWAP_MAX_TICK = 887272
+
+const getPriceTick = (
+  price: number,
+  tickSpacing: number,
+  decimalAdjust: number,
+  roundDown: boolean,
+) => {
+  if (
+    !Number.isFinite(price) ||
+    price <= 0 ||
+    !Number.isFinite(tickSpacing) ||
+    tickSpacing <= 0 ||
+    !Number.isFinite(decimalAdjust) ||
+    decimalAdjust <= 0
+  ) {
+    return null
+  }
+  const adjustedPrice = price / decimalAdjust
+  if (!Number.isFinite(adjustedPrice) || adjustedPrice <= 0) {
+    return null
+  }
+  const rawTick = Math.log(adjustedPrice) / Math.log(1.0001)
+  if (!Number.isFinite(rawTick)) {
+    return null
+  }
+  const snappedTick = roundDown
+    ? Math.floor(rawTick / tickSpacing) * tickSpacing
+    : Math.ceil(rawTick / tickSpacing) * tickSpacing
+  const clampedTick = Math.min(UNISWAP_MAX_TICK, Math.max(UNISWAP_MIN_TICK, snappedTick))
+  return Number.isFinite(clampedTick) ? clampedTick : null
+}
+
 function LiquidityChart({
   apiData,
   loading,
@@ -138,8 +188,10 @@ function LiquidityChart({
   const token0 = apiData?.pool?.token0 || 'TOKEN0'
   const token1 = apiData?.pool?.token1 || 'TOKEN1'
   const currentTickValue = apiData?.current_tick ?? currentTick
-  const rangeMinValue = Number.isFinite(Number(rangeMin)) ? Number(rangeMin) : null
-  const rangeMaxValue = Number.isFinite(Number(rangeMax)) ? Number(rangeMax) : null
+  const parsedRangeMin = parsePriceInput(rangeMin)
+  const parsedRangeMax = parsePriceInput(rangeMax)
+  const rangeMinValue = Number.isFinite(parsedRangeMin) ? parsedRangeMin : null
+  const rangeMaxValue = Number.isFinite(parsedRangeMax) ? parsedRangeMax : null
   const hasRange = rangeMinValue !== null && rangeMaxValue !== null
   const rangeLow = hasRange ? Math.min(rangeMinValue, rangeMaxValue) : null
   const rangeHigh = hasRange ? Math.max(rangeMinValue, rangeMaxValue) : null
@@ -592,7 +644,7 @@ function PoolPriceChart({
       .sort((a, b) => (a.tsMs ?? 0) - (b.tsMs ?? 0))
   }, [apiData])
 
-  const stats = apiData?.stats || {}
+  const stats = apiData?.status || apiData?.stats || {}
   const statMin = Number(stats.min)
   const statMax = Number(stats.max)
   const statAvg = Number(stats.avg)
@@ -601,8 +653,8 @@ function PoolPriceChart({
     ? Number(currentPriceOverride)
     : statPriceRaw
 
-  const minInput = Number(rangeMin)
-  const maxInput = Number(rangeMax)
+  const minInput = parsePriceInput(rangeMin)
+  const maxInput = parsePriceInput(rangeMax)
 
   const seriesPrices = points.map((point) => point.price)
   const fallbackPrices = [effectivePrice, minInput, maxInput].filter((value) =>
@@ -835,6 +887,14 @@ function PoolPriceChart({
     )} ${pad(date.getHours())}:${pad(date.getMinutes())}`
   }
 
+  const formatDayLabel = (timestampMs: number) => {
+    const date = new Date(timestampMs)
+    if (!Number.isFinite(date.getTime())) {
+      return '--'
+    }
+    return String(date.getDate())
+  }
+
   const formatStat = (value: number) => (Number.isFinite(value) ? value.toFixed(2) : '--')
 
   const axisTicks = useMemo(() => {
@@ -842,38 +902,32 @@ function PoolPriceChart({
       return []
     }
 
-    const hourMs = 60 * 60 * 1000
-    const rangeHours = (viewMaxTs - viewMinTs) / hourMs
+    const dayMs = 24 * 60 * 60 * 1000
+    const rangeDays = (viewMaxTs - viewMinTs) / dayMs
     const desiredTicks = 7
-    const roughStepHours = Math.max(1, Math.round(rangeHours / (desiredTicks - 1)))
-    const stepOptions = [1, 2, 3, 4, 6, 8, 12, 24]
-    const stepHours = stepOptions.find((value) => value >= roughStepHours) ?? roughStepHours
-    const stepMs = stepHours * hourMs
+    const roughStepDays = Math.max(1, Math.round(rangeDays / (desiredTicks - 1)))
+    const stepOptions = [1, 2, 3, 5, 7, 14, 30]
+    const stepDays = stepOptions.find((value) => value >= roughStepDays) ?? roughStepDays
+    const stepMs = stepDays * dayMs
 
     const minDate = new Date(viewMinTs)
     let firstTick = new Date(
       minDate.getFullYear(),
       minDate.getMonth(),
       minDate.getDate(),
-      minDate.getHours(),
     ).getTime()
     if (firstTick < viewMinTs) {
-      firstTick += hourMs
-    }
-    const firstHour = new Date(firstTick).getHours()
-    const hourOffset = firstHour % stepHours
-    if (hourOffset !== 0) {
-      firstTick += (stepHours - hourOffset) * hourMs
+      firstTick += dayMs
     }
 
     const ticks: Array<{ ts: number; label: string }> = []
-    ticks.push({ ts: viewMinTs, label: String(new Date(viewMinTs).getHours()) })
+    ticks.push({ ts: viewMinTs, label: formatDayLabel(viewMinTs) })
 
     for (let ts = firstTick; ts < viewMaxTs; ts += stepMs) {
-      ticks.push({ ts, label: String(new Date(ts).getHours()) })
+      ticks.push({ ts, label: formatDayLabel(ts) })
     }
 
-    ticks.push({ ts: viewMaxTs, label: String(new Date(viewMaxTs).getHours()) })
+    ticks.push({ ts: viewMaxTs, label: formatDayLabel(viewMaxTs) })
 
     const positioned = ticks
       .filter(
@@ -883,20 +937,30 @@ function PoolPriceChart({
       .map((tick) => {
         const ratio = (tick.ts - viewMinTs) / (viewMaxTs - viewMinTs)
         const x = padding + ratio * chartWidth
+        const date = new Date(tick.ts)
+        const dayKey = Number.isFinite(date.getTime())
+          ? `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`
+          : tick.label
         return {
           label: tick.label,
           left: (x / width) * 100,
           ts: tick.ts,
+          dayKey,
         }
       })
       .sort((a, b) => a.ts - b.ts)
 
-    const deduped: Array<{ label: string; left: number; ts: number }> = []
+    const deduped: Array<{ label: string; left: number; ts: number; dayKey: string }> = []
+    const seenDays = new Set<string>()
     const minSpacing = 4
     positioned.forEach((tick) => {
+      if (seenDays.has(tick.dayKey)) {
+        return
+      }
       const last = deduped[deduped.length - 1]
       if (!last || Math.abs(tick.left - last.left) >= minSpacing) {
         deduped.push(tick)
+        seenDays.add(tick.dayKey)
       }
     })
 
@@ -1023,18 +1087,27 @@ function PoolPriceChart({
   )
 }
 
-function EstimatedFees({ data, loading, error }: EstimatedFeesProps) {
-  const estimated24h = Number(data?.estimated_fees_24h)
-  const monthlyValue = Number(data?.monthly?.value)
-  const monthlyPercent = Number(data?.monthly?.percent)
-  const yearlyValue = Number(data?.yearly?.value)
-  const yearlyApr = Number(data?.yearly?.apr)
+function EstimatedFees({ data, loading, error, depositUsd }: EstimatedFeesProps) {
+  const estimated24h = Number(data?.estimated_fees_24h_usd)
+  const monthlyValue = Number(data?.monthly_usd)
+  const yearlyValue = Number(data?.yearly_usd)
+  const feeApr = Number(data?.fee_apr)
+  const parsedDeposit = Number(depositUsd)
+  const monthlyPercent =
+    Number.isFinite(monthlyValue) && Number.isFinite(parsedDeposit) && parsedDeposit > 0
+      ? (monthlyValue / parsedDeposit) * 100
+      : 0
+  const yearlyPercent =
+    Number.isFinite(yearlyValue) && Number.isFinite(parsedDeposit) && parsedDeposit > 0
+      ? (yearlyValue / parsedDeposit) * 100
+      : 0
   const display24h = Number.isFinite(estimated24h) ? estimated24h : 0
   const displayMonthlyValue = Number.isFinite(monthlyValue) ? monthlyValue : 0
   const displayMonthlyPercent = Number.isFinite(monthlyPercent) ? monthlyPercent : 0
   const displayYearlyValue = Number.isFinite(yearlyValue) ? yearlyValue : 0
-  const displayYearlyApr = Number.isFinite(yearlyApr) ? yearlyApr : 0
-  const aprPercent = displayYearlyApr * 100
+  const displayYearlyPercent = Number.isFinite(yearlyPercent) ? yearlyPercent : 0
+  const displayFeeApr = Number.isFinite(feeApr) ? feeApr : 0
+  const aprPercent = displayFeeApr * 100
   const statusLabel = error ? 'Error' : ''
   const chipLabel = error
     ? 'Error'
@@ -1062,7 +1135,9 @@ function EstimatedFees({ data, loading, error }: EstimatedFeesProps) {
         </div>
         <div className="fees-row">
           <span>Yearly</span>
-          <strong>${displayYearlyValue.toFixed(2)}</strong>
+          <strong>
+            ${displayYearlyValue.toFixed(2)} ({displayYearlyPercent.toFixed(2)}%)
+          </strong>
         </div>
       </div>
       {statusLabel ? <div className="subtitle">{statusLabel}</div> : null}
@@ -1084,11 +1159,18 @@ function LiquidityPriceRange({
   feeTier,
   token0Decimals,
   token1Decimals,
+  poolTickSpacing,
+  minTickValue,
+  maxTickValue,
   poolId,
   onMatchTicks,
 }: LiquidityPriceRangeProps) {
   const [isFullRange, setIsFullRange] = useState(false)
   const [isMatching, setIsMatching] = useState(false)
+  const minInputInitialValueRef = useRef<string | null>(null)
+  const maxInputInitialValueRef = useRef<string | null>(null)
+  const minInputDirtyRef = useRef(false)
+  const maxInputDirtyRef = useRef(false)
   const fallbackFeeTier = 3000
   const fallbackToken0Decimals = 18
   const fallbackToken1Decimals = 6
@@ -1101,8 +1183,8 @@ function LiquidityPriceRange({
   const resolvedToken1Decimals = Number.isFinite(Number(token1Decimals))
     ? Number(token1Decimals)
     : fallbackToken1Decimals
-  const parsedMin = Number(rangeMin)
-  const parsedMax = Number(rangeMax)
+  const parsedMin = parsePriceInput(rangeMin)
+  const parsedMax = parsePriceInput(rangeMax)
   const minBound = Number.isFinite(bounds?.min) ? bounds.min : null
   const maxBound = Number.isFinite(bounds?.max) ? bounds.max : null
   const hasBounds =
@@ -1111,6 +1193,11 @@ function LiquidityPriceRange({
     maxBound !== null &&
     minBound !== null &&
     maxBound !== minBound
+  const middleBound =
+    hasBounds && Number.isFinite(minBound) && Number.isFinite(maxBound)
+      ? ((minBound as number) + (maxBound as number)) / 2
+      : null
+  const hasMiddleBound = Number.isFinite(middleBound)
   let lowPercent = 0.18
   let highPercent = 0.82
   const tickSpacingMap: Record<number, number> = {
@@ -1119,10 +1206,14 @@ function LiquidityPriceRange({
     3000: 60,
     10000: 200,
   }
-  const tickSpacing = tickSpacingMap[resolvedFeeTier] ?? 1
+  const resolvedPoolTickSpacing = Number(poolTickSpacing)
+  const tickSpacing =
+    Number.isFinite(resolvedPoolTickSpacing) && resolvedPoolTickSpacing > 0
+      ? resolvedPoolTickSpacing
+      : (tickSpacingMap[resolvedFeeTier] ?? 1)
   const decimalAdjust = Math.pow(10, resolvedToken0Decimals - resolvedToken1Decimals)
-  const minTick = -887272
-  const maxTick = 887272
+  const minTick = UNISWAP_MIN_TICK
+  const maxTick = UNISWAP_MAX_TICK
 
   const handleTimeframeChange = (value: string | number) => {
     const parsed = Number(value)
@@ -1139,7 +1230,7 @@ function LiquidityPriceRange({
     if (!Number.isFinite(value)) {
       return ''
     }
-    return value.toFixed(6)
+    return formatRangeNumber(value)
   }
 
   const getSafeValue = (value: number, fallback: number | null) => {
@@ -1153,7 +1244,12 @@ function LiquidityPriceRange({
   }
 
   const snapPriceToTick = (price: number, roundDown: boolean) => {
-    if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(tickSpacing) || tickSpacing <= 0) {
+    if (
+      !Number.isFinite(price) ||
+      price <= 0 ||
+      !Number.isFinite(tickSpacing) ||
+      tickSpacing <= 0
+    ) {
       return null
     }
     const adjustedPrice = price / decimalAdjust
@@ -1164,9 +1260,20 @@ function LiquidityPriceRange({
     if (!Number.isFinite(rawTick)) {
       return null
     }
-    const snappedTick = roundDown
-      ? Math.floor(rawTick / tickSpacing) * tickSpacing
-      : Math.ceil(rawTick / tickSpacing) * tickSpacing
+
+    // Make snapping stable/idempotent: avoid dropping an extra tick due to floating-point drift
+    // when the input is already very close to a tick boundary.
+    const tickFloat = rawTick / tickSpacing
+    const rounded = Math.round(tickFloat)
+    const EPS = 1e-8
+    const isExact = Math.abs(tickFloat - rounded) < EPS
+
+    const snappedTick = isExact
+      ? rounded * tickSpacing
+      : roundDown
+        ? Math.floor(tickFloat) * tickSpacing
+        : Math.ceil(tickFloat) * tickSpacing
+
     const clampedTick = Math.min(maxTick, Math.max(minTick, snappedTick))
     const snappedPrice = Math.pow(1.0001, clampedTick) * decimalAdjust
     return Number.isFinite(snappedPrice) ? snappedPrice : null
@@ -1180,21 +1287,21 @@ function LiquidityPriceRange({
     if (value === '') {
       return
     }
-    const parsed = Number(value)
+    const parsed = parsePriceInput(value)
     if (!Number.isFinite(parsed)) {
       return
     }
     const snapped = snapPriceToTick(parsed, roundDown)
     const nextValue = snapped === null ? parsed : snapped
-    const clamped =
-      hasBounds && Number.isFinite(minBound) && Number.isFinite(maxBound)
-        ? Math.min(maxBound as number, Math.max(minBound as number, nextValue))
-        : nextValue
-    setter(formatRangeValue(clamped))
+    setter(formatRangeValue(nextValue))
   }
 
-  const stepRangeValue = (value: string, direction: -1 | 1, setter: (next: string) => void) => {
-    const parsed = Number(value)
+  const stepRangeValue = (
+    value: string,
+    direction: -1 | 1,
+    setter: (next: string) => void,
+  ) => {
+    const parsed = parsePriceInput(value)
     if (!Number.isFinite(parsed)) {
       return
     }
@@ -1221,41 +1328,40 @@ function LiquidityPriceRange({
     if (!Number.isFinite(nextPrice)) {
       return
     }
-    const clamped =
-      hasBounds && Number.isFinite(minBound) && Number.isFinite(maxBound)
-        ? Math.min(maxBound as number, Math.max(minBound as number, nextPrice))
-        : nextPrice
-    setter(formatRangeValue(clamped))
+    setter(formatRangeValue(nextPrice))
   }
 
   const toggleFullRange = (nextValue: boolean) => {
     setIsFullRange(nextValue)
-    if (nextValue && hasBounds && Number.isFinite(minBound) && Number.isFinite(maxBound)) {
+    if (nextValue) {
+      setRangeMin('0')
+      setRangeMax('∞')
+      return
+    }
+    if (hasBounds && Number.isFinite(minBound) && Number.isFinite(maxBound)) {
       setRangeMin(formatRangeValue(minBound))
       setRangeMax(formatRangeValue(maxBound))
     }
   }
 
   useEffect(() => {
-    if (!isFullRange || !hasBounds) {
+    if (!isFullRange) {
       return
     }
-    const minValue = formatRangeValue(minBound as number)
-    const maxValue = formatRangeValue(maxBound as number)
-    if (rangeMin !== minValue) {
-      setRangeMin(minValue)
+    if (rangeMin !== '0') {
+      setRangeMin('0')
     }
-    if (rangeMax !== maxValue) {
-      setRangeMax(maxValue)
+    if (rangeMax !== '∞') {
+      setRangeMax('∞')
     }
-  }, [hasBounds, isFullRange, maxBound, minBound, rangeMax, rangeMin, setRangeMax, setRangeMin])
+  }, [isFullRange, rangeMax, rangeMin, setRangeMax, setRangeMin])
 
   const handleMatchTicks = async () => {
     if (!poolId) {
       return
     }
-    const parsedMin = Number(rangeMin)
-    const parsedMax = Number(rangeMax)
+    const parsedMin = parsePriceInput(rangeMin)
+    const parsedMax = parsePriceInput(rangeMax)
     if (!Number.isFinite(parsedMin) || !Number.isFinite(parsedMax)) {
       return
     }
@@ -1288,35 +1394,44 @@ function LiquidityPriceRange({
     const high = Math.max(parsedMin, parsedMax)
     const clamp = (value: number) =>
       Math.min(maxBound as number, Math.max(minBound as number, value))
-    const clampedLow = clamp(low)
-    const clampedHigh = clamp(high)
+    const clampedLow = hasMiddleBound
+      ? Math.min(middleBound as number, clamp(low))
+      : clamp(low)
+    const clampedHigh = hasMiddleBound
+      ? Math.max(middleBound as number, clamp(high))
+      : clamp(high)
     lowPercent = (clampedLow - (minBound as number)) / ((maxBound as number) - (minBound as number))
     highPercent =
       (clampedHigh - (minBound as number)) / ((maxBound as number) - (minBound as number))
   }
 
-  const displayMin = Number.isFinite(parsedMin)
-    ? parsedMin
-    : Number.isFinite(minBound)
-      ? (minBound as number)
-      : 0
-  const displayMax = Number.isFinite(parsedMax)
-    ? parsedMax
-    : Number.isFinite(maxBound)
-      ? (maxBound as number)
-      : 0
+  if (isFullRange) {
+    lowPercent = 0
+    highPercent = 1
+  }
+
   const lowPercentClamped = Math.max(0, Math.min(100, lowPercent * 100))
   const highPercentClamped = Math.max(0, Math.min(100, highPercent * 100))
   const safeMin = getSafeValue(parsedMin, minBound)
   const safeMax = getSafeValue(parsedMax, maxBound)
-  const sliderMin = Math.min(safeMin, safeMax)
-  const sliderMax = Math.max(safeMin, safeMax)
+  const sliderMinRaw =
+    isFullRange && hasBounds && Number.isFinite(minBound) ? (minBound as number) : Math.min(safeMin, safeMax)
+  const sliderMaxRaw =
+    isFullRange && hasBounds && Number.isFinite(maxBound) ? (maxBound as number) : Math.max(safeMin, safeMax)
+  const sliderMin = hasMiddleBound
+    ? Math.min(middleBound as number, sliderMinRaw)
+    : sliderMinRaw
+  const sliderMax = hasMiddleBound
+    ? Math.max(middleBound as number, sliderMaxRaw)
+    : sliderMaxRaw
 
   return (
     <div className="card range-card">
       <input type="hidden" name="fee_tier" value={resolvedFeeTier} />
       <input type="hidden" name="token0_decimals" value={resolvedToken0Decimals} />
       <input type="hidden" name="token1_decimals" value={resolvedToken1Decimals} />
+      <input type="hidden" name="min_tick" value={minTickValue ?? ''} />
+      <input type="hidden" name="max_tick" value={maxTickValue ?? ''} />
       <div className="range-header">
         <div>
           <div className="range-title">Liquidity Price Range</div>
@@ -1368,27 +1483,49 @@ function LiquidityPriceRange({
         </div>
       </div>
       <div className="range-inputs">
-        <label>
-          Min Price
+        <div className="range-input">
+          <label htmlFor="rangeMinInput">Min Price</label>
           <div className="range-input-control">
             <button
               type="button"
               className="range-step"
               onClick={() => stepRangeValue(rangeMin, -1, setRangeMin)}
-              disabled={!hasBounds}
+              disabled={!hasBounds || isFullRange}
               aria-label="Decrease min price"
             >
               -
             </button>
             <input
+              id="rangeMinInput"
               value={rangeMin}
+              onFocus={() => {
+                minInputInitialValueRef.current = rangeMin
+                minInputDirtyRef.current = false
+              }}
               onChange={(event) => {
                 if (isFullRange) {
                   setIsFullRange(false)
                 }
-                setRangeMin(event.target.value)
+                minInputDirtyRef.current = true
+                setRangeMin(event.target.value.replace(/\./g, ','))
               }}
-              onBlur={(event) => commitRangeValue(event.target.value, true, setRangeMin)}
+              onBlur={(event) => {
+                const didEdit = minInputDirtyRef.current
+                minInputDirtyRef.current = false
+
+                const initialValue = minInputInitialValueRef.current
+                minInputInitialValueRef.current = null
+
+                // If the user didn't type in this input, don't snap on blur.
+                if (!didEdit) {
+                  return
+                }
+
+                if (initialValue !== null && event.target.value === initialValue) {
+                  return
+                }
+                commitRangeValue(event.target.value, true, setRangeMin)
+              }}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') {
                   event.currentTarget.blur()
@@ -1399,34 +1536,57 @@ function LiquidityPriceRange({
               type="button"
               className="range-step"
               onClick={() => stepRangeValue(rangeMin, 1, setRangeMin)}
-              disabled={!hasBounds}
+              disabled={!hasBounds || isFullRange}
               aria-label="Increase min price"
             >
               +
             </button>
           </div>
-        </label>
-        <label>
-          Max Price
+        </div>
+
+        <div className="range-input">
+          <label htmlFor="rangeMaxInput">Max Price</label>
           <div className="range-input-control">
             <button
               type="button"
               className="range-step"
               onClick={() => stepRangeValue(rangeMax, -1, setRangeMax)}
-              disabled={!hasBounds}
+              disabled={!hasBounds || isFullRange}
               aria-label="Decrease max price"
             >
               -
             </button>
             <input
+              id="rangeMaxInput"
               value={rangeMax}
+              onFocus={() => {
+                maxInputInitialValueRef.current = rangeMax
+                maxInputDirtyRef.current = false
+              }}
               onChange={(event) => {
                 if (isFullRange) {
                   setIsFullRange(false)
                 }
-                setRangeMax(event.target.value)
+                maxInputDirtyRef.current = true
+                setRangeMax(event.target.value.replace(/\./g, ','))
               }}
-              onBlur={(event) => commitRangeValue(event.target.value, false, setRangeMax)}
+              onBlur={(event) => {
+                const didEdit = maxInputDirtyRef.current
+                maxInputDirtyRef.current = false
+
+                const initialValue = maxInputInitialValueRef.current
+                maxInputInitialValueRef.current = null
+
+                // If the user didn't type in this input, don't snap on blur.
+                if (!didEdit) {
+                  return
+                }
+
+                if (initialValue !== null && event.target.value === initialValue) {
+                  return
+                }
+                commitRangeValue(event.target.value, false, setRangeMax)
+              }}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') {
                   event.currentTarget.blur()
@@ -1437,13 +1597,13 @@ function LiquidityPriceRange({
               type="button"
               className="range-step"
               onClick={() => stepRangeValue(rangeMax, 1, setRangeMax)}
-              disabled={!hasBounds}
+              disabled={!hasBounds || isFullRange}
               aria-label="Increase max price"
             >
               +
             </button>
           </div>
-        </label>
+        </div>
       </div>
       <div className="range-sliders">
         <div className="range-slider">
@@ -1468,19 +1628,24 @@ function LiquidityPriceRange({
             if (!Number.isFinite(value)) {
               return
             }
-            const snapped = snapPriceToTick(value, true)
+            const direction: -1 | 1 =
+              Number.isFinite(parsedMin) && value < parsedMin ? -1 : 1
+            const snapped = snapPriceToTick(value, direction < 0)
             const nextValue =
               snapped === null
                 ? value
                 : hasBounds && Number.isFinite(minBound) && Number.isFinite(maxBound)
                   ? Math.min(maxBound as number, Math.max(minBound as number, snapped))
                   : snapped
-            if (Number.isFinite(parsedMax) && nextValue > parsedMax) {
-              setRangeMax(formatRangeValue(nextValue))
+            const limitedValue = hasMiddleBound
+              ? Math.min(middleBound as number, nextValue)
+              : nextValue
+            if (Number.isFinite(parsedMax) && limitedValue > parsedMax) {
+              setRangeMax(formatRangeValue(limitedValue))
             }
-            setRangeMin(formatRangeValue(nextValue))
+            setRangeMin(formatRangeValue(limitedValue))
           }}
-          disabled={!hasBounds}
+          disabled={!hasBounds || isFullRange}
         />
         <input
           type="range"
@@ -1493,24 +1658,25 @@ function LiquidityPriceRange({
             if (!Number.isFinite(value)) {
               return
             }
-            const snapped = snapPriceToTick(value, false)
+            const direction: -1 | 1 =
+              Number.isFinite(parsedMax) && value < parsedMax ? -1 : 1
+            const snapped = snapPriceToTick(value, direction < 0)
             const nextValue =
               snapped === null
                 ? value
                 : hasBounds && Number.isFinite(minBound) && Number.isFinite(maxBound)
                   ? Math.min(maxBound as number, Math.max(minBound as number, snapped))
                   : snapped
-            if (Number.isFinite(parsedMin) && nextValue < parsedMin) {
-              setRangeMin(formatRangeValue(nextValue))
+            const limitedValue = hasMiddleBound
+              ? Math.max(middleBound as number, nextValue)
+              : nextValue
+            if (Number.isFinite(parsedMin) && limitedValue < parsedMin) {
+              setRangeMin(formatRangeValue(limitedValue))
             }
-            setRangeMax(formatRangeValue(nextValue))
+            setRangeMax(formatRangeValue(limitedValue))
           }}
-          disabled={!hasBounds}
+          disabled={!hasBounds || isFullRange}
         />
-      </div>
-      <div className="range-values">
-        <span>${displayMin.toFixed(2)}</span>
-        <span>${displayMax.toFixed(2)}</span>
       </div>
     </div>
   )
@@ -1591,6 +1757,7 @@ function PoolDetailPage() {
   const token1SymbolParam = searchParams.get('token1_symbol')
   const exchangeIdParam = searchParams.get('exchange_id')
   const exchangeId = exchangeIdParam ? Number(exchangeIdParam) : Number.NaN
+  const chainId = networkIdParam ? Number(networkIdParam) : Number.NaN
   const normalizedPoolAddress = poolAddress ? decodeURIComponent(poolAddress) : ''
   const backSearch = new URLSearchParams()
 
@@ -1642,33 +1809,38 @@ function PoolDetailPage() {
   const [poolPriceData, setPoolPriceData] = useState<PoolPriceResponse | null>(null)
   const [poolPriceLoading, setPoolPriceLoading] = useState(false)
   const [poolPriceError, setPoolPriceError] = useState('')
-
-  const [estimatedFeesData, setEstimatedFeesData] = useState<EstimatedFeesResponse | null>(null)
-  const [estimatedFeesLoading, setEstimatedFeesLoading] = useState(false)
-  const [estimatedFeesError, setEstimatedFeesError] = useState('')
+  const [simulateAprData, setSimulateAprData] = useState<SimulateAprResponse | null>(null)
+  const [simulateAprLoading, setSimulateAprLoading] = useState(false)
+  const [simulateAprError, setSimulateAprError] = useState('')
 
   const [allocateData, setAllocateData] = useState<AllocateResponse | null>(null)
   const [allocateLoading, setAllocateLoading] = useState(false)
   const [allocateError, setAllocateError] = useState('')
+  const [poolTickSpacing, setPoolTickSpacing] = useState<number | null>(null)
 
   const [matchedCurrentPrice, setMatchedCurrentPrice] = useState<number | null>(null)
   const [matchedRangeKey, setMatchedRangeKey] = useState<string | null>(null)
 
-  const [rangeMin, setRangeMin] = useState('2833.5')
-  const [rangeMax, setRangeMax] = useState('3242.4')
+  const [rangeMin, setRangeMin] = useState('2833,5')
+  const [rangeMax, setRangeMax] = useState('3242,4')
   const [depositUsd, setDepositUsd] = useState('1000')
   const [timeframeDays, setTimeframeDays] = useState(14)
   const distributionTickRange = 20000
 
   const allocateDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const estimatedFeesDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const simulateAprDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const distributionDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const defaultRangeKeyRef = useRef<string | null>(null)
+  const latestRangeRef = useRef<{ min: string; max: string }>({
+    min: rangeMin,
+    max: rangeMax,
+  })
   const hasMountedRef = useRef(false)
   const snapshotDateRef = useRef(new Date().toISOString().slice(0, 10))
 
-  const hasContext = Boolean(normalizedPoolAddress && network && Number.isFinite(exchangeId))
+  const hasContext = Boolean(normalizedPoolAddress && Number.isFinite(chainId) && Number.isFinite(exchangeId))
   const activeKey = hasContext
-    ? `${normalizedPoolAddress}|${network}|${exchangeId}`
+    ? `${normalizedPoolAddress}|${chainId}|${exchangeId}`
     : ''
   const showPool = poolKey === activeKey && pool !== null
   const showError = poolErrorKey === activeKey && poolError !== ''
@@ -1687,19 +1859,47 @@ function PoolDetailPage() {
   const token1Decimals =
     distributionData?.pool?.token1_decimals ??
     (Number.isFinite(pool?.token1_decimals) ? pool?.token1_decimals : null)
+  const fallbackFeeTier = 3000
+  const fallbackToken0Decimals = 18
+  const fallbackToken1Decimals = 6
+  const resolvedFeeTier = Number.isFinite(Number(feeTier)) ? Number(feeTier) : fallbackFeeTier
+  const resolvedToken0Decimals = Number.isFinite(Number(token0Decimals))
+    ? Number(token0Decimals)
+    : fallbackToken0Decimals
+  const resolvedToken1Decimals = Number.isFinite(Number(token1Decimals))
+    ? Number(token1Decimals)
+    : fallbackToken1Decimals
+  const tickSpacingMap: Record<number, number> = {
+    100: 1,
+    500: 10,
+    3000: 60,
+    10000: 200,
+  }
+  const resolvedPoolTickSpacing = Number(poolTickSpacing)
+  const effectiveTickSpacing =
+    Number.isFinite(resolvedPoolTickSpacing) && resolvedPoolTickSpacing > 0
+      ? resolvedPoolTickSpacing
+      : (tickSpacingMap[resolvedFeeTier] ?? 1)
+  const decimalAdjust = Math.pow(10, resolvedToken0Decimals - resolvedToken1Decimals)
+  const minTickValue = useMemo(
+    () => getPriceTick(parsePriceInput(rangeMin), effectiveTickSpacing, decimalAdjust, true),
+    [decimalAdjust, effectiveTickSpacing, rangeMin],
+  )
+  const maxTickValue = useMemo(
+    () => getPriceTick(parsePriceInput(rangeMax), effectiveTickSpacing, decimalAdjust, false),
+    [decimalAdjust, effectiveTickSpacing, rangeMax],
+  )
 
   const rangeBounds = useMemo<RangeBounds>(() => {
-    if (!distributionData?.data?.length) {
-      return { min: null, max: null }
+    const currentPrice = Number(poolPriceData?.status?.price ?? poolPriceData?.stats?.price)
+    if (Number.isFinite(currentPrice) && currentPrice > 0) {
+      return {
+        min: currentPrice * 0.2,
+        max: currentPrice * 1.8,
+      }
     }
-    const prices = distributionData.data
-      .map((point) => Number(point.price))
-      .filter((value) => Number.isFinite(value))
-    if (!prices.length) {
-      return { min: null, max: null }
-    }
-    return { min: Math.min(...prices), max: Math.max(...prices) }
-  }, [distributionData])
+    return { min: null, max: null }
+  }, [poolPriceData])
 
   const fetchDistribution = useCallback(async () => {
     if (!pool) {
@@ -1708,8 +1908,8 @@ function PoolDetailPage() {
     setDistributionLoading(true)
     setDistributionError('')
     try {
-      const parsedMin = Number(rangeMin)
-      const parsedMax = Number(rangeMax)
+      const parsedMin = parsePriceInput(rangeMin)
+      const parsedMax = parsePriceInput(rangeMax)
       const payload = {
         pool_id: pool.id,
         snapshot_date: snapshotDateRef.current,
@@ -1730,7 +1930,12 @@ function PoolDetailPage() {
   }, [pool, rangeMax, rangeMin])
 
   const fetchAllocate = useCallback(async () => {
-    if (!normalizedPoolAddress || !network) {
+    if (!normalizedPoolAddress || !Number.isFinite(chainId) || !Number.isFinite(exchangeId)) {
+      return
+    }
+    const parsedMin = parsePriceInput(rangeMin)
+    const parsedMax = parsePriceInput(rangeMax)
+    if (!Number.isFinite(parsedMin) || !Number.isFinite(parsedMax)) {
       return
     }
     setAllocateLoading(true)
@@ -1738,10 +1943,11 @@ function PoolDetailPage() {
     try {
       const payload = {
         pool_address: normalizedPoolAddress,
-        rede: network,
+        chain_id: chainId,
+        dex_id: exchangeId,
         amount: depositUsd,
-        range1: rangeMin,
-        range2: rangeMax,
+        range1: String(parsedMin),
+        range2: String(parsedMax),
       }
       const data = await postAllocate(payload)
       setAllocateData(data)
@@ -1752,17 +1958,64 @@ function PoolDetailPage() {
     } finally {
       setAllocateLoading(false)
     }
-  }, [depositUsd, network, normalizedPoolAddress, rangeMax, rangeMin])
+  }, [chainId, depositUsd, exchangeId, normalizedPoolAddress, rangeMax, rangeMin])
 
   const fetchPoolPrice = useCallback(async () => {
-    if (!pool) {
+    if (
+      !pool ||
+      !normalizedPoolAddress ||
+      !Number.isFinite(chainId) ||
+      !Number.isFinite(exchangeId)
+    ) {
       return
     }
     setPoolPriceLoading(true)
     setPoolPriceError('')
     try {
-      const data = await getPoolPrice(pool.id, timeframeDays)
+      const requestRangeKey = `${latestRangeRef.current.min}|${latestRangeRef.current.max}`
+      const data = await getPoolPrice({
+        poolAddress: normalizedPoolAddress,
+        chainId,
+        dexId: exchangeId,
+        days: timeframeDays,
+      })
       setPoolPriceData(data)
+
+      const initialPrice = Number(data?.status?.price ?? data?.stats?.price)
+      const defaultRangeKey = `${normalizedPoolAddress}|${chainId}|${exchangeId}|${snapshotDateRef.current}`
+
+      if (Number.isFinite(initialPrice) && defaultRangeKeyRef.current !== defaultRangeKey) {
+        try {
+          const defaultRange = await postLiquidityDistributionDefaultRange({
+            pool_id: normalizedPoolAddress,
+            chain_id: chainId,
+            dex_id: exchangeId,
+            snapshot_date: snapshotDateRef.current,
+            preset: 'stable',
+            initial_price: initialPrice,
+            center_tick: null,
+            swapped_pair: false,
+          })
+          const defaultTickSpacing = Number(defaultRange.tick_spacing)
+          if (Number.isFinite(defaultTickSpacing) && defaultTickSpacing > 0) {
+            setPoolTickSpacing(defaultTickSpacing)
+          }
+          const defaultMin = Number(defaultRange.min_price)
+          const defaultMax = Number(defaultRange.max_price)
+          if (Number.isFinite(defaultMin) && Number.isFinite(defaultMax)) {
+            const currentRangeKey = `${latestRangeRef.current.min}|${latestRangeRef.current.max}`
+            if (currentRangeKey !== requestRangeKey) {
+              defaultRangeKeyRef.current = defaultRangeKey
+              return
+            }
+            setRangeMin(formatRangeNumber(defaultMin))
+            setRangeMax(formatRangeNumber(defaultMax))
+            defaultRangeKeyRef.current = defaultRangeKey
+          }
+        } catch {
+          // Keep existing range values when default-range is unavailable.
+        }
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load price.'
       setPoolPriceError(message)
@@ -1770,48 +2023,77 @@ function PoolDetailPage() {
     } finally {
       setPoolPriceLoading(false)
     }
-  }, [pool, timeframeDays])
+  }, [chainId, exchangeId, normalizedPoolAddress, pool, timeframeDays])
 
-  const fetchEstimatedFees = useCallback(async () => {
-    if (!pool) {
+  useEffect(() => {
+    latestRangeRef.current = { min: rangeMin, max: rangeMax }
+  }, [rangeMax, rangeMin])
+
+  const fetchSimulateApr = useCallback(async () => {
+    if (!normalizedPoolAddress || !Number.isFinite(chainId) || !Number.isFinite(exchangeId)) {
       return
     }
-    setEstimatedFeesLoading(true)
-    setEstimatedFeesError('')
-    try {
-      const parsedDeposit = Number(depositUsd)
-      const parsedMin = Number(rangeMin)
-      const parsedMax = Number(rangeMax)
-      const parsedDays = Number(timeframeDays)
-      if (
-        !Number.isFinite(parsedDeposit) ||
-        !Number.isFinite(parsedMin) ||
-        !Number.isFinite(parsedMax) ||
-        !Number.isFinite(parsedDays)
-      ) {
-        return
-      }
-      const amount0 = allocateData ? getSafeNumber(allocateData.amount_token0) : 0
-      const amount1 = allocateData ? getSafeNumber(allocateData.amount_token1) : 0
-      const payload = {
-        pool_id: pool.id,
-        days: parsedDays,
-        min_price: parsedMin,
-        max_price: parsedMax,
-        deposit_usd: parsedDeposit,
-        amount_token0: amount0,
-        amount_token1: amount1,
-      }
-      const data = await postEstimatedFees(payload)
-      setEstimatedFeesData(data)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load fees.'
-      setEstimatedFeesError(message)
-      setEstimatedFeesData(null)
-    } finally {
-      setEstimatedFeesLoading(false)
+    const parsedDays = Math.max(1, Math.round(timeframeDays))
+    const parsedDeposit = Number(depositUsd)
+    const hasDeposit = Number.isFinite(parsedDeposit) && parsedDeposit > 0
+    const parsedMin = parsePriceInput(rangeMin)
+    const parsedMax = parsePriceInput(rangeMax)
+    const hasPriceRange = Number.isFinite(parsedMin) && Number.isFinite(parsedMax)
+    const amountToken0 = getSafeNumber(allocateData?.amount_token0)
+    const amountToken1 = getSafeNumber(allocateData?.amount_token1)
+    const hasAmountToken0 = Number.isFinite(amountToken0) && amountToken0 > 0
+    const hasAmountToken1 = Number.isFinite(amountToken1) && amountToken1 > 0
+
+    if (!hasPriceRange) {
+      return
     }
-  }, [allocateData, depositUsd, pool, rangeMax, rangeMin, timeframeDays])
+
+    const payload = {
+      pool_address: normalizedPoolAddress,
+      chain_id: chainId,
+      dex_id: exchangeId,
+      ...(hasDeposit ? { deposit_usd: String(parsedDeposit) } : {}),
+      ...(hasAmountToken0 ? { amount_token0: String(amountToken0) } : {}),
+      ...(hasAmountToken1 ? { amount_token1: String(amountToken1) } : {}),
+      tick_lower: null,
+      tick_upper: null,
+      min_price: parsedMin,
+      max_price: parsedMax,
+      horizon: `${parsedDays}d`,
+      mode: 'B' as const,
+      lookback_days: parsedDays,
+    }
+
+    setSimulateAprLoading(true)
+    setSimulateAprError('')
+    try {
+      const data = await postSimulateApr(payload)
+      setSimulateAprData(data)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to simulate APR.'
+      setSimulateAprError(message)
+      setSimulateAprData(null)
+    } finally {
+      setSimulateAprLoading(false)
+    }
+  }, [
+    allocateData,
+    chainId,
+    depositUsd,
+    exchangeId,
+    normalizedPoolAddress,
+    rangeMax,
+    rangeMin,
+    timeframeDays,
+  ])
+
+  useEffect(() => {
+    defaultRangeKeyRef.current = null
+    setPoolTickSpacing(null)
+    setSimulateAprData(null)
+    setSimulateAprError('')
+    setSimulateAprLoading(false)
+  }, [activeKey])
 
   useEffect(() => {
     if (!showPool || !pool) {
@@ -1831,13 +2113,13 @@ function PoolDetailPage() {
   }, [fetchDistribution, pool, rangeMax, rangeMin, showPool])
 
   useEffect(() => {
-    if (!hasContext || !normalizedPoolAddress || !network || !Number.isFinite(exchangeId)) {
+    if (!hasContext || !normalizedPoolAddress || !Number.isFinite(chainId) || !Number.isFinite(exchangeId)) {
       return
     }
 
     const controller = new AbortController()
 
-    getPoolByAddress(normalizedPoolAddress, network, exchangeId, controller.signal)
+    getPoolByAddress(normalizedPoolAddress, chainId, exchangeId, controller.signal)
       .then((data) => {
         setPool(data)
         setPoolKey(activeKey)
@@ -1854,7 +2136,7 @@ function PoolDetailPage() {
       })
 
     return () => controller.abort()
-  }, [activeKey, exchangeId, hasContext, network, normalizedPoolAddress])
+  }, [activeKey, chainId, exchangeId, hasContext, normalizedPoolAddress])
 
   useEffect(() => {
     if (!showPool || !pool) {
@@ -1896,42 +2178,21 @@ function PoolDetailPage() {
   }, [depositUsd, fetchAllocate, pool, showPool])
 
   useEffect(() => {
-    if (!showPool || !pool || !allocateData) {
+    if (!showPool || !pool) {
       return
     }
-    if (estimatedFeesDebounceRef.current) {
-      clearTimeout(estimatedFeesDebounceRef.current)
+    if (simulateAprDebounceRef.current) {
+      clearTimeout(simulateAprDebounceRef.current)
     }
-    estimatedFeesDebounceRef.current = setTimeout(() => {
-      const parsedDeposit = Number(depositUsd)
-      const parsedMin = Number(rangeMin)
-      const parsedMax = Number(rangeMax)
-      const parsedDays = Number(timeframeDays)
-      if (
-        !Number.isFinite(parsedDeposit) ||
-        !Number.isFinite(parsedMin) ||
-        !Number.isFinite(parsedMax) ||
-        !Number.isFinite(parsedDays)
-      ) {
-        return
-      }
-      fetchEstimatedFees()
+    simulateAprDebounceRef.current = setTimeout(() => {
+      fetchSimulateApr()
     }, 400)
     return () => {
-      if (estimatedFeesDebounceRef.current) {
-        clearTimeout(estimatedFeesDebounceRef.current)
+      if (simulateAprDebounceRef.current) {
+        clearTimeout(simulateAprDebounceRef.current)
       }
     }
-  }, [
-    allocateData,
-    depositUsd,
-    fetchEstimatedFees,
-    pool,
-    rangeMax,
-    rangeMin,
-    showPool,
-    timeframeDays,
-  ])
+  }, [fetchSimulateApr, pool, showPool])
 
   useEffect(() => {
     if (!showPool) {
@@ -1991,9 +2252,10 @@ function PoolDetailPage() {
         <div className="pool-detail-grid">
           <div className="stack">
             <EstimatedFees
-              data={estimatedFeesData}
-              loading={estimatedFeesLoading}
-              error={estimatedFeesError}
+              data={simulateAprData}
+              loading={simulateAprLoading}
+              error={simulateAprError}
+              depositUsd={depositUsd}
             />
             <LiquidityPriceRange
               rangeMin={rangeMin}
@@ -2006,6 +2268,9 @@ function PoolDetailPage() {
               feeTier={feeTier ?? null}
               token0Decimals={token0Decimals ?? null}
               token1Decimals={token1Decimals ?? null}
+              poolTickSpacing={poolTickSpacing}
+              minTickValue={minTickValue}
+              maxTickValue={maxTickValue}
               poolId={pool?.id ?? null}
               onMatchTicks={handleMatchTicks}
             />
