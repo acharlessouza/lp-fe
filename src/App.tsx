@@ -30,7 +30,7 @@ function App() {
           </a>
         </nav>
         <div className="header-meta">
-          <span className="status-pill">Simulate v1</span>
+          <span className="status-pill">Simulate APR</span>
         </div>
       </header>
       <Routes>

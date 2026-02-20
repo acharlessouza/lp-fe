@@ -7,6 +7,9 @@ import type {
   PoolDetail,
   PoolPriceResponse,
   SimulateAprResponse,
+  SimulateAprV1Payload,
+  SimulateAprV2Payload,
+  SimulateAprVersion,
 } from '../services/api'
 import {
   getPoolByAddress,
@@ -41,6 +44,10 @@ const CALCULATION_METHOD_OPTIONS: Array<{ value: CalculationMethod; label: strin
 ]
 
 const DEFAULT_CALCULATION_METHOD: CalculationMethod = 'avg_liquidity_in_range'
+const APR_VERSION_OPTIONS: Array<{ value: SimulateAprVersion; label: string }> = [
+  { value: 'v1', label: 'APR v1' },
+  { value: 'v2', label: 'APR v2' },
+]
 
 type LiquidityChartProps = {
   apiData: LiquidityDistributionResponse | null
@@ -90,6 +97,8 @@ type LiquidityPriceRangeProps = {
   setCalculationMethod: (value: CalculationMethod) => void
   customCalculationPrice: string
   setCustomCalculationPrice: (value: string) => void
+  aprVersion: SimulateAprVersion
+  setAprVersion: (value: SimulateAprVersion) => void
   poolId: number | string | null
   onMatchTicks?: (data: MatchTicksResponse, matchedMin: string, matchedMax: string) => void
 }
@@ -1265,6 +1274,8 @@ function LiquidityPriceRange({
   setCalculationMethod,
   customCalculationPrice,
   setCustomCalculationPrice,
+  aprVersion,
+  setAprVersion,
   poolId,
   onMatchTicks,
 }: LiquidityPriceRangeProps) {
@@ -1318,6 +1329,8 @@ function LiquidityPriceRange({
   const minTick = UNISWAP_MIN_TICK
   const maxTick = UNISWAP_MAX_TICK
   const showCalculationMethod = false
+  const showAprVersion = true
+  const hasSecondaryMetaCard = showCalculationMethod || showAprVersion
 
   const handleTimeframeChange = (value: string | number) => {
     const parsed = Number(value)
@@ -1461,6 +1474,11 @@ function LiquidityPriceRange({
     }
   }
 
+  const handleAprVersionChange = (value: string) => {
+    const selected = APR_VERSION_OPTIONS.find((option) => option.value === value)
+    setAprVersion(selected?.value ?? 'v1')
+  }
+
   useEffect(() => {
     if (!isFullRange) {
       return
@@ -1576,7 +1594,7 @@ function LiquidityPriceRange({
           </label>
         </div>
       </div>
-      <div className={`range-meta${showCalculationMethod ? '' : ' range-meta--single'}`}>
+      <div className={`range-meta${hasSecondaryMetaCard ? '' : ' range-meta--single'}`}>
         <div className="range-meta-card">
           <span>Calculation Timeframe (Days)</span>
           <div className="timeframe-controls">
@@ -1624,6 +1642,22 @@ function LiquidityPriceRange({
                 />
               </div>
             ) : null}
+          </div>
+        ) : null}
+        {showAprVersion ? (
+          <div className="range-meta-card">
+            <span>APR Version</span>
+            <select
+              value={aprVersion}
+              onChange={(event) => handleAprVersionChange(event.target.value)}
+              aria-label="APR Version"
+            >
+              {APR_VERSION_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
         ) : null}
       </div>
@@ -1974,6 +2008,7 @@ function PoolDetailPage() {
     DEFAULT_CALCULATION_METHOD,
   )
   const [customCalculationPrice, setCustomCalculationPrice] = useState('')
+  const [aprVersion, setAprVersion] = useState<SimulateAprVersion>('v1')
   const [isPairInverted, setIsPairInverted] = useState(false)
   const [copyStatus, setCopyStatus] = useState<'idle' | 'done' | 'error'>('idle')
   const [isFavoritePool, setIsFavoritePool] = useState(false)
@@ -1992,6 +2027,7 @@ function PoolDetailPage() {
   const latestTimeframeRef = useRef(timeframeDays)
   const latestCalculationMethodRef = useRef<CalculationMethod>(calculationMethod)
   const latestCustomCalculationPriceRef = useRef(customCalculationPrice)
+  const latestAprVersionRef = useRef<SimulateAprVersion>(aprVersion)
   const latestAllocateDataRef = useRef<AllocateResponse | null>(allocateData)
   const allocateResultKeyRef = useRef<string | null>(null)
   const lastAprKeyRef = useRef<string | null>(null)
@@ -2271,6 +2307,10 @@ function PoolDetailPage() {
   }, [customCalculationPrice])
 
   useEffect(() => {
+    latestAprVersionRef.current = aprVersion
+  }, [aprVersion])
+
+  useEffect(() => {
     if (calculationMethod !== 'custom' && customCalculationPrice !== '') {
       setCustomCalculationPrice('')
     }
@@ -2311,6 +2351,7 @@ function PoolDetailPage() {
     const daysValue = latestTimeframeRef.current
     const selectedCalculationMethod = latestCalculationMethodRef.current
     const customPriceValueRaw = latestCustomCalculationPriceRef.current
+    const selectedAprVersion = latestAprVersionRef.current
     const alloc = latestAllocateDataRef.current
 
     const parsedDays = Math.max(1, Math.round(daysValue))
@@ -2349,38 +2390,65 @@ function PoolDetailPage() {
     const amountToken1 = getSafeNumber(alloc?.amount_token1)
     const hasAmountToken0 = Number.isFinite(amountToken0) && amountToken0 > 0
     const hasAmountToken1 = Number.isFinite(amountToken1) && amountToken1 > 0
+    const tickLowerValue = getPriceTick(parsedMin, effectiveTickSpacing, decimalAdjust, true)
+    const tickUpperValue = getPriceTick(parsedMax, effectiveTickSpacing, decimalAdjust, false)
+    const hasTickRange =
+      Number.isFinite(tickLowerValue) &&
+      Number.isFinite(tickUpperValue) &&
+      tickLowerValue !== null &&
+      tickUpperValue !== null
 
-    const aprKey = `${requestKey}|${parsedDays}|${amountToken0}|${amountToken1}|${selectedCalculationMethod}|${customCalculationPriceValue ?? ''}`
+    const aprKey = `${requestKey}|${selectedAprVersion}|${parsedDays}|${amountToken0}|${amountToken1}|${selectedCalculationMethod}|${customCalculationPriceValue ?? ''}`
     if (lastAprKeyRef.current === aprKey) {
       return
     }
     lastAprKeyRef.current = aprKey
 
-    const payload = {
+    const basePayload = {
       pool_address: normalizedPoolAddress,
       chain_id: chainId,
       dex_id: exchangeId,
       ...(hasDeposit ? { deposit_usd: String(parsedDeposit) } : {}),
       ...(hasAmountToken0 ? { amount_token0: String(amountToken0) } : {}),
       ...(hasAmountToken1 ? { amount_token1: String(amountToken1) } : {}),
-      tick_lower: null,
-      tick_upper: null,
-      min_price: parsedMin,
-      max_price: parsedMax,
-      full_range: isFullRange,
-      horizon: `${parsedDays}d`,
-      mode: 'B' as const,
-      lookback_days: parsedDays,
-      calculation_method: selectedCalculationMethod,
-      ...(selectedCalculationMethod === 'custom'
-        ? { custom_calculation_price: customCalculationPriceValue }
-        : {}),
     }
 
     setSimulateAprLoading(true)
     setSimulateAprError('')
     try {
-      const data = await postSimulateApr(payload)
+      const useTickRange = !isFullRange && hasTickRange
+      const sharedPayload = {
+        ...basePayload,
+        tick_lower: useTickRange ? tickLowerValue : null,
+        tick_upper: useTickRange ? tickUpperValue : null,
+        min_price: useTickRange ? null : parsedMin,
+        max_price: useTickRange ? null : parsedMax,
+        full_range: isFullRange,
+        horizon: `${parsedDays}d`,
+        lookback_days: parsedDays,
+        calculation_method: selectedCalculationMethod,
+      }
+      const data =
+        selectedAprVersion === 'v2'
+          ? await postSimulateApr(
+              {
+                ...sharedPayload,
+                custom_calculation_price:
+                  selectedCalculationMethod === 'custom' ? customCalculationPriceValue : null,
+                apr_method: 'exact',
+              } as SimulateAprV2Payload,
+              { version: 'v2' },
+            )
+          : await postSimulateApr(
+              {
+                ...sharedPayload,
+                ...(selectedCalculationMethod === 'custom'
+                  ? { custom_calculation_price: customCalculationPriceValue }
+                  : {}),
+                mode: 'B',
+              } as SimulateAprV1Payload,
+              { version: 'v1' },
+            )
       setSimulateAprData(data)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to simulate APR.'
@@ -2391,7 +2459,15 @@ function PoolDetailPage() {
     } finally {
       setSimulateAprLoading(false)
     }
-  }, [chainId, exchangeId, isFullRange, normalizedPoolAddress, resolveRequestRange])
+  }, [
+    chainId,
+    decimalAdjust,
+    effectiveTickSpacing,
+    exchangeId,
+    isFullRange,
+    normalizedPoolAddress,
+    resolveRequestRange,
+  ])
 
   useEffect(() => {
     defaultRangeKeyRef.current = null
@@ -2515,6 +2591,7 @@ function PoolDetailPage() {
     timeframeDays,
     calculationMethod,
     customCalculationPrice,
+    aprVersion,
     fetchSimulateApr,
     pool,
     showPool,
@@ -2774,6 +2851,8 @@ function PoolDetailPage() {
               setCalculationMethod={setCalculationMethod}
               customCalculationPrice={customCalculationPrice}
               setCustomCalculationPrice={setCustomCalculationPrice}
+              aprVersion={aprVersion}
+              setAprVersion={setAprVersion}
               poolId={pool?.id ?? null}
               onMatchTicks={handleMatchTicks}
             />

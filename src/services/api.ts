@@ -198,10 +198,20 @@ export type EstimatedFeesResponse = {
 }
 
 export type SimulateAprResponse = {
+  estimated_fees_period_usd?: number | string
   estimated_fees_24h_usd?: number | string
   monthly_usd?: number | string
   yearly_usd?: number | string
   fee_apr?: number | string
+  meta?: {
+    block_a_number?: number | string
+    block_b_number?: number | string
+    ts_a?: number | string
+    ts_b?: number | string
+    seconds_delta?: number | string
+    used_price?: number | string
+    warnings?: string[]
+  }
   diagnostics?: {
     hours_total?: number
     hours_in_range?: number
@@ -244,6 +254,46 @@ export type MatchTicksResponse = {
   min_price_matched: number | string
   max_price_matched: number | string
   current_price_matched?: number | string
+}
+
+export type SimulateAprVersion = 'v1' | 'v2'
+
+export type SimulateAprV1Payload = {
+  pool_address: string
+  chain_id: number
+  dex_id: number
+  deposit_usd?: string
+  amount_token0?: string
+  amount_token1?: string
+  tick_lower: number | null
+  tick_upper: number | null
+  min_price: number | null
+  max_price: number | null
+  full_range: boolean
+  horizon: string
+  mode: 'A' | 'B'
+  lookback_days: number
+  calculation_method: 'current' | 'avg_liquidity_in_range' | 'peak_liquidity_in_range' | 'custom'
+  custom_calculation_price?: number | null
+}
+
+export type SimulateAprV2Payload = {
+  pool_address: string
+  chain_id: number
+  dex_id: number
+  deposit_usd?: string
+  amount_token0?: string
+  amount_token1?: string
+  tick_lower: number | null
+  tick_upper: number | null
+  min_price: number | null
+  max_price: number | null
+  full_range: boolean
+  horizon: string
+  lookback_days: number
+  calculation_method: 'current' | 'avg_liquidity_in_range' | 'peak_liquidity_in_range' | 'custom'
+  custom_calculation_price?: number | null
+  apr_method: 'exact'
 }
 
 export const getExchanges = (signal?: AbortSignal) =>
@@ -417,35 +467,20 @@ export const getPoolVolumeHistory = (
 }
 
 export const postSimulateApr = (
-  payload: {
-    pool_address: string
-    chain_id: number
-    dex_id: number
-    deposit_usd?: string
-    amount_token0?: string
-    amount_token1?: string
-    tick_lower: number | null
-    tick_upper: number | null
-    min_price: number | null
-    max_price: number | null
-    full_range: boolean
-    horizon: string
-    mode: 'A' | 'B'
-    lookback_days: number
-    calculation_method:
-      | 'current'
-      | 'avg_liquidity_in_range'
-      | 'peak_liquidity_in_range'
-      | 'custom'
-    custom_calculation_price?: number | null
-  },
-  signal?: AbortSignal,
-) =>
-  fetchJson<SimulateAprResponse>('/v1/simulate/apr', {
+  payload: SimulateAprV1Payload | SimulateAprV2Payload,
+  options: {
+    signal?: AbortSignal
+    version?: SimulateAprVersion
+  } = {},
+) => {
+  const { signal, version = 'v1' } = options
+  const endpoint = version === 'v2' ? '/v2/simulate/apr' : '/v1/simulate/apr'
+  return fetchJson<SimulateAprResponse>(endpoint, {
     method: 'POST',
     body: payload,
     signal,
   })
+}
 
 export const postEstimatedFees = (
   payload: {
