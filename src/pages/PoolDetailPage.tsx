@@ -228,6 +228,37 @@ const toAprPayloadPrice = (value: string | number) => {
   const normalized = Number(parsed.toPrecision(15))
   return Number.isFinite(normalized) && normalized > 0 ? normalized : null
 }
+
+const formatChartPrice = (value: number) => {
+  if (!Number.isFinite(value)) {
+    return '--'
+  }
+  const absolute = Math.abs(value)
+  if (absolute === 0) {
+    return '0'
+  }
+  if (absolute >= 1000) {
+    return value.toLocaleString('en-US', { maximumFractionDigits: 2 })
+  }
+  if (absolute >= 1) {
+    return value.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 4,
+      useGrouping: false,
+    })
+  }
+  if (absolute >= 0.01) {
+    return value.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 6,
+      useGrouping: false,
+    })
+  }
+  return value.toLocaleString('en-US', {
+    maximumSignificantDigits: 10,
+    useGrouping: false,
+  })
+}
 const UNISWAP_MIN_TICK = -887272
 const UNISWAP_MAX_TICK = 887272
 
@@ -628,7 +659,7 @@ function LiquidityChart({
           <div className="chart-title">Liquidity Distribution</div>
           <div className="chart-meta">
             <div className="price">
-              1 {token0} = {hoverPoint ? hoverPoint.price.toFixed(2) : '--'} {token1}
+              1 {token0} = {hoverPoint ? formatChartPrice(hoverPoint.price) : '--'} {token1}
             </div>
           </div>
         </div>
@@ -1009,7 +1040,7 @@ function PoolPriceChart({
     return String(date.getDate())
   }
 
-  const formatStat = (value: number) => (Number.isFinite(value) ? value.toFixed(2) : '--')
+  const formatStat = (value: number) => formatChartPrice(value)
 
   const axisTicks = useMemo(() => {
     if (!renderPoints.length || viewMaxTs <= viewMinTs) {
@@ -1180,7 +1211,7 @@ function PoolPriceChart({
         {hoverPoint ? (
           <div className="tooltip" style={{ left: `${scaleX(hoverPoint.tsMs ?? 0)}px` }}>
             <div className="label">
-              1 {token0} = {hoverPoint.price.toFixed(2)} {token1}
+              1 {token0} = {formatChartPrice(hoverPoint.price)} {token1}
             </div>
             <div>{formatDateTime(hoverPoint.timestamp)}</div>
           </div>
