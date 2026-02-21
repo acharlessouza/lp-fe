@@ -7,9 +7,7 @@ import type {
   PoolDetail,
   PoolPriceResponse,
   SimulateAprResponse,
-  SimulateAprV1Payload,
   SimulateAprV2Payload,
-  SimulateAprVersion,
 } from '../services/api'
 import {
   getPoolByAddress,
@@ -44,10 +42,6 @@ const CALCULATION_METHOD_OPTIONS: Array<{ value: CalculationMethod; label: strin
 ]
 
 const DEFAULT_CALCULATION_METHOD: CalculationMethod = 'avg_liquidity_in_range'
-const APR_VERSION_OPTIONS: Array<{ value: SimulateAprVersion; label: string }> = [
-  { value: 'v1', label: 'APR v1' },
-  { value: 'v2', label: 'APR v2' },
-]
 
 type LiquidityChartProps = {
   apiData: LiquidityDistributionResponse | null
@@ -97,9 +91,8 @@ type LiquidityPriceRangeProps = {
   setCalculationMethod: (value: CalculationMethod) => void
   customCalculationPrice: string
   setCustomCalculationPrice: (value: string) => void
-  aprVersion: SimulateAprVersion
-  setAprVersion: (value: SimulateAprVersion) => void
   poolId: number | string | null
+  isPairInverted: boolean
   onMatchTicks?: (data: MatchTicksResponse, matchedMin: string, matchedMax: string) => void
 }
 
@@ -219,7 +212,22 @@ const resolveRangeValue = (value: string, fallback: number | null) => {
   return Number.isFinite(fallback) ? (fallback as number) : Number.NaN
 }
 
-const formatRangeNumber = (value: number) => value.toFixed(6).replace('.', ',')
+const formatRangeNumber = (value: number) =>
+  value
+    .toLocaleString('en-US', {
+      useGrouping: false,
+      maximumSignificantDigits: 15,
+    })
+    .replace('.', ',')
+
+const toAprPayloadPrice = (value: string | number) => {
+  const parsed = typeof value === 'string' ? parsePriceInput(value) : Number(value)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null
+  }
+  const normalized = Number(parsed.toPrecision(15))
+  return Number.isFinite(normalized) && normalized > 0 ? normalized : null
+}
 const UNISWAP_MIN_TICK = -887272
 const UNISWAP_MAX_TICK = 887272
 
@@ -1274,9 +1282,8 @@ function LiquidityPriceRange({
   setCalculationMethod,
   customCalculationPrice,
   setCustomCalculationPrice,
-  aprVersion,
-  setAprVersion,
   poolId,
+  isPairInverted,
   onMatchTicks,
 }: LiquidityPriceRangeProps) {
   const [isMatching, setIsMatching] = useState(false)
@@ -1329,8 +1336,7 @@ function LiquidityPriceRange({
   const minTick = UNISWAP_MIN_TICK
   const maxTick = UNISWAP_MAX_TICK
   const showCalculationMethod = false
-  const showAprVersion = true
-  const hasSecondaryMetaCard = showCalculationMethod || showAprVersion
+  const hasSecondaryMetaCard = showCalculationMethod
 
   const handleTimeframeChange = (value: string | number) => {
     const parsed = Number(value)
@@ -1474,11 +1480,6 @@ function LiquidityPriceRange({
     }
   }
 
-  const handleAprVersionChange = (value: string) => {
-    const selected = APR_VERSION_OPTIONS.find((option) => option.value === value)
-    setAprVersion(selected?.value ?? 'v1')
-  }
-
   useEffect(() => {
     if (!isFullRange) {
       return
@@ -1508,6 +1509,7 @@ function LiquidityPriceRange({
         pool_id: poolId,
         min_price: parsedMin,
         max_price: parsedMax,
+        swapped_pair: isPairInverted,
       })
       const nextMin = Number(response.min_price_matched)
       const nextMax = Number(response.max_price_matched)
@@ -1642,22 +1644,6 @@ function LiquidityPriceRange({
                 />
               </div>
             ) : null}
-          </div>
-        ) : null}
-        {showAprVersion ? (
-          <div className="range-meta-card">
-            <span>APR Version</span>
-            <select
-              value={aprVersion}
-              onChange={(event) => handleAprVersionChange(event.target.value)}
-              aria-label="APR Version"
-            >
-              {APR_VERSION_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
           </div>
         ) : null}
       </div>
@@ -1924,7 +1910,7 @@ function DepositAmount({
 
 function PoolDetailPage() {
   const { poolAddress } = useParams<{ poolAddress: string }>()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const network = searchParams.get('network') ?? ''
   const networkIdParam = searchParams.get('network_id')
   const exchangeNameParam = searchParams.get('exchange_name')
@@ -1934,6 +1920,7 @@ function PoolDetailPage() {
   const token0SymbolParam = searchParams.get('token0_symbol')
   const token1SymbolParam = searchParams.get('token1_symbol')
   const exchangeIdParam = searchParams.get('exchange_id')
+  const swappedParam = searchParams.get('swapped_pair')
   const exchangeId = exchangeIdParam ? Number(exchangeIdParam) : Number.NaN
   const chainId = networkIdParam ? Number(networkIdParam) : Number.NaN
   const normalizedPoolAddress = poolAddress ? decodeURIComponent(poolAddress) : ''
@@ -1969,6 +1956,9 @@ function PoolDetailPage() {
 
   if (token1SymbolParam) {
     backSearch.set('token1_symbol', token1SymbolParam)
+  }
+  if (swappedParam === 'true' || swappedParam === 'false') {
+    backSearch.set('swapped_pair', swappedParam)
   }
 
   const backHref = backSearch.toString() ? `/simulate?${backSearch.toString()}` : '/simulate'
@@ -2008,8 +1998,7 @@ function PoolDetailPage() {
     DEFAULT_CALCULATION_METHOD,
   )
   const [customCalculationPrice, setCustomCalculationPrice] = useState('')
-  const [aprVersion, setAprVersion] = useState<SimulateAprVersion>('v1')
-  const [isPairInverted, setIsPairInverted] = useState(false)
+  const [isPairInverted, setIsPairInverted] = useState(() => swappedParam === 'true')
   const [copyStatus, setCopyStatus] = useState<'idle' | 'done' | 'error'>('idle')
   const [isFavoritePool, setIsFavoritePool] = useState(false)
   const distributionTickRange = 20000
@@ -2027,7 +2016,6 @@ function PoolDetailPage() {
   const latestTimeframeRef = useRef(timeframeDays)
   const latestCalculationMethodRef = useRef<CalculationMethod>(calculationMethod)
   const latestCustomCalculationPriceRef = useRef(customCalculationPrice)
-  const latestAprVersionRef = useRef<SimulateAprVersion>(aprVersion)
   const latestAllocateDataRef = useRef<AllocateResponse | null>(allocateData)
   const allocateResultKeyRef = useRef<string | null>(null)
   const lastAprKeyRef = useRef<string | null>(null)
@@ -2166,6 +2154,7 @@ function PoolDetailPage() {
         tick_range: distributionTickRange,
         range_min: Number.isFinite(parsedMin) ? parsedMin : null,
         range_max: Number.isFinite(parsedMax) ? parsedMax : null,
+        swapped_pair: isPairInverted,
       }
       const data = await postLiquidityDistribution(payload)
       setDistributionData(data)
@@ -2176,7 +2165,7 @@ function PoolDetailPage() {
     } finally {
       setDistributionLoading(false)
     }
-  }, [isFullRange, pool, rangeMax, rangeMin, resolveRequestRange])
+  }, [isFullRange, isPairInverted, pool, rangeMax, rangeMin, resolveRequestRange])
 
   const fetchAllocate = useCallback(async () => {
     if (!normalizedPoolAddress || !Number.isFinite(chainId) || !Number.isFinite(exchangeId)) {
@@ -2191,7 +2180,7 @@ function PoolDetailPage() {
       return
     }
 
-    const requestKey = `${normalizedPoolAddress}|${chainId}|${exchangeId}|${amountValue}|${parsedMin}|${parsedMax}|${isFullRange}`
+    const requestKey = `${normalizedPoolAddress}|${chainId}|${exchangeId}|${amountValue}|${parsedMin}|${parsedMax}|${isFullRange}|${isPairInverted}`
 
     setAllocateLoading(true)
     setAllocateError('')
@@ -2207,6 +2196,7 @@ function PoolDetailPage() {
         range1: String(parsedMin),
         range2: String(parsedMax),
         full_range: isFullRange,
+        swapped_pair: isPairInverted,
       }
       const data = await postAllocate(payload)
       setAllocateData(data)
@@ -2219,7 +2209,7 @@ function PoolDetailPage() {
     } finally {
       setAllocateLoading(false)
     }
-  }, [chainId, exchangeId, isFullRange, normalizedPoolAddress, resolveRequestRange])
+  }, [chainId, exchangeId, isFullRange, isPairInverted, normalizedPoolAddress, resolveRequestRange])
 
   const fetchPoolPrice = useCallback(async () => {
     if (
@@ -2239,11 +2229,12 @@ function PoolDetailPage() {
         chainId,
         dexId: exchangeId,
         days: timeframeDays,
+        swapped_pair: isPairInverted,
       })
       setPoolPriceData(data)
 
       const initialPrice = Number(data?.status?.price ?? data?.stats?.price)
-      const defaultRangeKey = `${normalizedPoolAddress}|${chainId}|${exchangeId}|${snapshotDateRef.current}`
+      const defaultRangeKey = `${normalizedPoolAddress}|${chainId}|${exchangeId}|${snapshotDateRef.current}|${isPairInverted}`
 
       if (Number.isFinite(initialPrice) && defaultRangeKeyRef.current !== defaultRangeKey) {
         try {
@@ -2255,7 +2246,7 @@ function PoolDetailPage() {
             preset: 'stable',
             initial_price: initialPrice,
             center_tick: null,
-            swapped_pair: false,
+            swapped_pair: isPairInverted,
           })
           const defaultTickSpacing = Number(defaultRange.tick_spacing)
           if (Number.isFinite(defaultTickSpacing) && defaultTickSpacing > 0) {
@@ -2284,7 +2275,7 @@ function PoolDetailPage() {
     } finally {
       setPoolPriceLoading(false)
     }
-  }, [chainId, exchangeId, normalizedPoolAddress, pool, timeframeDays])
+  }, [chainId, exchangeId, isPairInverted, normalizedPoolAddress, pool, timeframeDays])
 
   useEffect(() => {
     latestRangeRef.current = { min: rangeMin, max: rangeMax }
@@ -2307,8 +2298,8 @@ function PoolDetailPage() {
   }, [customCalculationPrice])
 
   useEffect(() => {
-    latestAprVersionRef.current = aprVersion
-  }, [aprVersion])
+    setIsPairInverted(swappedParam === 'true')
+  }, [swappedParam])
 
   useEffect(() => {
     if (calculationMethod !== 'custom' && customCalculationPrice !== '') {
@@ -2351,7 +2342,6 @@ function PoolDetailPage() {
     const daysValue = latestTimeframeRef.current
     const selectedCalculationMethod = latestCalculationMethodRef.current
     const customPriceValueRaw = latestCustomCalculationPriceRef.current
-    const selectedAprVersion = latestAprVersionRef.current
     const alloc = latestAllocateDataRef.current
 
     const parsedDays = Math.max(1, Math.round(daysValue))
@@ -2362,6 +2352,16 @@ function PoolDetailPage() {
     const hasPriceRange = Number.isFinite(parsedMin) && Number.isFinite(parsedMax)
 
     if (!hasPriceRange) {
+      return
+    }
+    const payloadMin = toAprPayloadPrice(parsedMin)
+    const payloadMax = toAprPayloadPrice(parsedMax)
+    if (payloadMin === null || payloadMax === null) {
+      return
+    }
+    const minPrice = Math.min(payloadMin, payloadMax)
+    const maxPrice = Math.max(payloadMin, payloadMax)
+    if (!(maxPrice > minPrice)) {
       return
     }
 
@@ -2381,7 +2381,7 @@ function PoolDetailPage() {
     }
 
     // Only run APR when the allocation result matches the current inputs.
-    const requestKey = `${normalizedPoolAddress}|${chainId}|${exchangeId}|${depositValue}|${parsedMin}|${parsedMax}|${isFullRange}`
+    const requestKey = `${normalizedPoolAddress}|${chainId}|${exchangeId}|${depositValue}|${parsedMin}|${parsedMax}|${isFullRange}|${isPairInverted}`
     if (allocateResultKeyRef.current !== requestKey) {
       return
     }
@@ -2390,15 +2390,8 @@ function PoolDetailPage() {
     const amountToken1 = getSafeNumber(alloc?.amount_token1)
     const hasAmountToken0 = Number.isFinite(amountToken0) && amountToken0 > 0
     const hasAmountToken1 = Number.isFinite(amountToken1) && amountToken1 > 0
-    const tickLowerValue = getPriceTick(parsedMin, effectiveTickSpacing, decimalAdjust, true)
-    const tickUpperValue = getPriceTick(parsedMax, effectiveTickSpacing, decimalAdjust, false)
-    const hasTickRange =
-      Number.isFinite(tickLowerValue) &&
-      Number.isFinite(tickUpperValue) &&
-      tickLowerValue !== null &&
-      tickUpperValue !== null
 
-    const aprKey = `${requestKey}|${selectedAprVersion}|${parsedDays}|${amountToken0}|${amountToken1}|${selectedCalculationMethod}|${customCalculationPriceValue ?? ''}`
+    const aprKey = `${requestKey}|v2|${parsedDays}|${amountToken0}|${amountToken1}|${selectedCalculationMethod}|${customCalculationPriceValue ?? ''}`
     if (lastAprKeyRef.current === aprKey) {
       return
     }
@@ -2408,6 +2401,7 @@ function PoolDetailPage() {
       pool_address: normalizedPoolAddress,
       chain_id: chainId,
       dex_id: exchangeId,
+      swapped_pair: isPairInverted,
       ...(hasDeposit ? { deposit_usd: String(parsedDeposit) } : {}),
       ...(hasAmountToken0 ? { amount_token0: String(amountToken0) } : {}),
       ...(hasAmountToken1 ? { amount_token1: String(amountToken1) } : {}),
@@ -2416,39 +2410,37 @@ function PoolDetailPage() {
     setSimulateAprLoading(true)
     setSimulateAprError('')
     try {
-      const useTickRange = !isFullRange && hasTickRange
       const sharedPayload = {
         ...basePayload,
-        tick_lower: useTickRange ? tickLowerValue : null,
-        tick_upper: useTickRange ? tickUpperValue : null,
-        min_price: useTickRange ? null : parsedMin,
-        max_price: useTickRange ? null : parsedMax,
+        // APR v2 payload uses higher-precision prices to avoid range drift from rounding, especially with swapped_pair.
+        // Backend handles tick conversion/canonicalization; frontend does not send ticks for APR v2.
+        tick_lower: null,
+        tick_upper: null,
+        min_price: minPrice,
+        max_price: maxPrice,
         full_range: isFullRange,
         horizon: `${parsedDays}d`,
         lookback_days: parsedDays,
         calculation_method: selectedCalculationMethod,
       }
-      const data =
-        selectedAprVersion === 'v2'
-          ? await postSimulateApr(
-              {
-                ...sharedPayload,
-                custom_calculation_price:
-                  selectedCalculationMethod === 'custom' ? customCalculationPriceValue : null,
-                apr_method: 'exact',
-              } as SimulateAprV2Payload,
-              { version: 'v2' },
-            )
-          : await postSimulateApr(
-              {
-                ...sharedPayload,
-                ...(selectedCalculationMethod === 'custom'
-                  ? { custom_calculation_price: customCalculationPriceValue }
-                  : {}),
-                mode: 'B',
-              } as SimulateAprV1Payload,
-              { version: 'v1' },
-            )
+      if (import.meta.env.DEV) {
+        console.debug('[apr-v2] payload range', {
+          display_min: minValue,
+          display_max: maxValue,
+          min_price: minPrice,
+          max_price: maxPrice,
+          swapped_pair: isPairInverted,
+        })
+      }
+      const data = await postSimulateApr(
+        {
+          ...sharedPayload,
+          custom_calculation_price:
+            selectedCalculationMethod === 'custom' ? customCalculationPriceValue : null,
+          apr_method: 'exact',
+        } as SimulateAprV2Payload,
+        { version: 'v2' },
+      )
       setSimulateAprData(data)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to simulate APR.'
@@ -2461,10 +2453,9 @@ function PoolDetailPage() {
     }
   }, [
     chainId,
-    decimalAdjust,
-    effectiveTickSpacing,
     exchangeId,
     isFullRange,
+    isPairInverted,
     normalizedPoolAddress,
     resolveRequestRange,
   ])
@@ -2591,7 +2582,6 @@ function PoolDetailPage() {
     timeframeDays,
     calculationMethod,
     customCalculationPrice,
-    aprVersion,
     fetchSimulateApr,
     pool,
     showPool,
@@ -2628,6 +2618,14 @@ function PoolDetailPage() {
     writeFavoritePools(nextFavorites)
     setIsFavoritePool(!exists)
   }
+
+  const handleTogglePairDirection = useCallback(() => {
+    const nextInverted = !isPairInverted
+    setIsPairInverted(nextInverted)
+    const nextSearchParams = new URLSearchParams(searchParams)
+    nextSearchParams.set('swapped_pair', String(nextInverted))
+    setSearchParams(nextSearchParams)
+  }, [isPairInverted, searchParams, setSearchParams])
 
   const handleCopyPoolAddress = async () => {
     if (!normalizedPoolAddress) {
@@ -2680,7 +2678,7 @@ function PoolDetailPage() {
             <button
               type="button"
               className="icon-button"
-              onClick={() => setIsPairInverted((prev) => !prev)}
+              onClick={handleTogglePairDirection}
               aria-label="Switch token direction"
               title="Switch token direction"
             >
@@ -2851,9 +2849,8 @@ function PoolDetailPage() {
               setCalculationMethod={setCalculationMethod}
               customCalculationPrice={customCalculationPrice}
               setCustomCalculationPrice={setCustomCalculationPrice}
-              aprVersion={aprVersion}
-              setAprVersion={setAprVersion}
               poolId={pool?.id ?? null}
+              isPairInverted={isPairInverted}
               onMatchTicks={handleMatchTicks}
             />
             <DepositAmount
@@ -2887,8 +2884,8 @@ function PoolDetailPage() {
               error={poolPriceError}
               rangeMin={rangeMin}
               rangeMax={rangeMax}
-              token0={token0Label}
-              token1={token1Label}
+              token0={displayToken0}
+              token1={displayToken1}
               currentPriceOverride={matchedCurrentPrice}
             />
             <VolumeHistoryChart

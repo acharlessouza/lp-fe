@@ -262,6 +262,7 @@ export type SimulateAprV1Payload = {
   pool_address: string
   chain_id: number
   dex_id: number
+  swapped_pair?: boolean
   deposit_usd?: string
   amount_token0?: string
   amount_token1?: string
@@ -281,6 +282,7 @@ export type SimulateAprV2Payload = {
   pool_address: string
   chain_id: number
   dex_id: number
+  swapped_pair?: boolean
   deposit_usd?: string
   amount_token0?: string
   amount_token1?: string
@@ -351,6 +353,7 @@ export const postLiquidityDistribution = (
     tick_range: number
     range_min: number | null
     range_max: number | null
+    swapped_pair: boolean
   },
   signal?: AbortSignal,
 ) =>
@@ -391,6 +394,7 @@ export const postAllocate = (
     range1: string
     range2: string
     full_range: boolean
+    swapped_pair: boolean
   },
   signal?: AbortSignal,
 ) =>
@@ -400,20 +404,21 @@ export const postAllocate = (
     signal,
   })
 
+type PoolPriceParamsBase = {
+  poolAddress: string
+  chainId: number
+  dexId: number
+  swapped_pair?: boolean
+}
+
 type PoolPriceParams =
-  | {
-      poolAddress: string
-      chainId: number
-      dexId: number
+  | (PoolPriceParamsBase & {
       days: number
-    }
-  | {
-      poolAddress: string
-      chainId: number
-      dexId: number
+    })
+  | (PoolPriceParamsBase & {
       start: string
       end: string
-    }
+    })
 
 export const getPoolPrice = (params: PoolPriceParams, signal?: AbortSignal) => {
   const query = new URLSearchParams({
@@ -427,6 +432,9 @@ export const getPoolPrice = (params: PoolPriceParams, signal?: AbortSignal) => {
   } else {
     query.set('start', params.start)
     query.set('end', params.end)
+  }
+  if (typeof params.swapped_pair === 'boolean') {
+    query.set('swapped_pair', String(params.swapped_pair))
   }
 
   return fetchJson<PoolPriceResponse>(`/v1/pool-price?${query.toString()}`, { signal })
@@ -505,6 +513,7 @@ export const postMatchTicks = (
     pool_id: number | string
     min_price: number
     max_price: number
+    swapped_pair?: boolean
   },
   signal?: AbortSignal,
 ) =>
