@@ -1265,7 +1265,7 @@ function EstimatedFees({ data, loading, error, depositUsd }: EstimatedFeesProps)
       <div className="fees-header">
         <div>
           <div className="fees-title">
-            Estimated Fees <span>(24h)</span>
+            Estimated Fees <span>(48h)</span>
           </div>
           <div className="fees-value">${display24h.toFixed(2)}</div>
         </div>
@@ -2163,8 +2163,18 @@ function PoolDetailPage() {
     (minValue: string, maxValue: string, isFullRangeSelected: boolean) => {
       const fallbackMin = isFullRangeSelected ? rangeBounds.min : null
       const fallbackMax = isFullRangeSelected ? rangeBounds.max : null
-      const parsedMin = resolveRangeValue(minValue, fallbackMin)
-      const parsedMax = resolveRangeValue(maxValue, fallbackMax)
+      const parsedMin =
+        isFullRangeSelected &&
+        minValue === FULL_RANGE_MIN_INPUT &&
+        Number.isFinite(fallbackMin)
+          ? (fallbackMin as number)
+          : resolveRangeValue(minValue, fallbackMin)
+      const parsedMax =
+        isFullRangeSelected &&
+        maxValue === FULL_RANGE_MAX_INPUT &&
+        Number.isFinite(fallbackMax)
+          ? (fallbackMax as number)
+          : resolveRangeValue(maxValue, fallbackMax)
       return { parsedMin, parsedMax }
     },
     [rangeBounds.max, rangeBounds.min],
@@ -2382,18 +2392,23 @@ function PoolDetailPage() {
     const { parsedMin, parsedMax } = resolveRequestRange(minValue, maxValue, isFullRange)
     const hasPriceRange = Number.isFinite(parsedMin) && Number.isFinite(parsedMax)
 
-    if (!hasPriceRange) {
+    if (!isFullRange && !hasPriceRange) {
       return
     }
-    const payloadMin = toAprPayloadPrice(parsedMin)
-    const payloadMax = toAprPayloadPrice(parsedMax)
-    if (payloadMin === null || payloadMax === null) {
-      return
-    }
-    const minPrice = Math.min(payloadMin, payloadMax)
-    const maxPrice = Math.max(payloadMin, payloadMax)
-    if (!(maxPrice > minPrice)) {
-      return
+
+    let minPrice: number | null = null
+    let maxPrice: number | null = null
+    if (!isFullRange) {
+      const payloadMin = toAprPayloadPrice(parsedMin)
+      const payloadMax = toAprPayloadPrice(parsedMax)
+      if (payloadMin === null || payloadMax === null) {
+        return
+      }
+      minPrice = Math.min(payloadMin, payloadMax)
+      maxPrice = Math.max(payloadMin, payloadMax)
+      if (!(maxPrice > minPrice)) {
+        return
+      }
     }
 
     let customCalculationPriceValue: number | null = null
@@ -2443,14 +2458,10 @@ function PoolDetailPage() {
     try {
       const sharedPayload = {
         ...basePayload,
-        // APR v2 payload uses higher-precision prices to avoid range drift from rounding, especially with swapped_pair.
-        // Backend handles tick conversion/canonicalization; frontend does not send ticks for APR v2.
-        tick_lower: null,
-        tick_upper: null,
+        // For full-range positions, backend expects min/max prices as null.
         min_price: minPrice,
         max_price: maxPrice,
         full_range: isFullRange,
-        horizon: `${parsedDays}d`,
         lookback_days: parsedDays,
         calculation_method: selectedCalculationMethod,
       }
@@ -2468,7 +2479,6 @@ function PoolDetailPage() {
           ...sharedPayload,
           custom_calculation_price:
             selectedCalculationMethod === 'custom' ? customCalculationPriceValue : null,
-          apr_method: 'exact',
         } as SimulateAprV2Payload,
         { version: 'v2' },
       )

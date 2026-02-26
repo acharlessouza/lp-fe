@@ -286,16 +286,12 @@ export type SimulateAprV2Payload = {
   deposit_usd?: string
   amount_token0?: string
   amount_token1?: string
-  tick_lower: number | null
-  tick_upper: number | null
   min_price: number | null
   max_price: number | null
   full_range: boolean
-  horizon: string
   lookback_days: number
   calculation_method: 'current' | 'avg_liquidity_in_range' | 'peak_liquidity_in_range' | 'custom'
   custom_calculation_price?: number | null
-  apr_method: 'exact'
 }
 
 export const getExchanges = (signal?: AbortSignal) =>
