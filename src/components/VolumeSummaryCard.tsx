@@ -24,7 +24,7 @@ export function VolumeSummaryCard({ summary, loading, error }: VolumeSummaryCard
   return (
     <div className="card volume-summary-card">
       <div className="volume-summary-header">
-        <div className="volume-summary-title">Volume Summary</div>
+        <div className="volume-summary-title">Pool Statistics</div>
         <div className="subtitle">{loading ? 'Loading...' : error ? 'API error' : ''}</div>
       </div>
 
@@ -33,26 +33,34 @@ export function VolumeSummaryCard({ summary, loading, error }: VolumeSummaryCard
       ) : null}
 
       {summary ? (
-        <div className="volume-summary-grid">
-          <div className="volume-summary-item">
-            <span>TVL</span>
-            <strong>{formatUsdCompact(summary.tvlUsd)}</strong>
+        <div className="volume-summary-stats">
+          <div className="volume-summary-stat">
+            <span className="volume-summary-label">TVL</span>
+            <strong className="volume-summary-value">{formatUsdCompact(summary.tvlUsd)}</strong>
           </div>
-          <div className="volume-summary-item">
-            <span>Avg Daily Fees</span>
-            <strong>{formatUsdCompact(summary.avgDailyFeesUsd)}</strong>
+          <div className="volume-summary-stat">
+            <span className="volume-summary-label">Avg Daily Fees</span>
+            <strong className="volume-summary-value">
+              {formatUsdCompact(summary.avgDailyFeesUsd)}
+            </strong>
           </div>
-          <div className="volume-summary-item">
-            <span>Daily Fees / TVL</span>
-            <strong>{formatPercent(summary.dailyFeesTvlPct)}</strong>
+          <div className="volume-summary-stat">
+            <span className="volume-summary-label">Daily Fees / TVL</span>
+            <strong className="volume-summary-value">
+              {formatPercent(summary.dailyFeesTvlPct)}
+            </strong>
           </div>
-          <div className="volume-summary-item">
-            <span>Avg Daily Volume</span>
-            <strong>{formatUsdCompact(summary.avgDailyVolumeUsd)}</strong>
+          <div className="volume-summary-stat">
+            <span className="volume-summary-label">Avg Daily Volume</span>
+            <strong className="volume-summary-value">
+              {formatUsdCompact(summary.avgDailyVolumeUsd)}
+            </strong>
           </div>
-          <div className="volume-summary-item">
-            <span>Daily Volume / TVL</span>
-            <strong>{formatPercent(summary.dailyVolumeTvlPct)}</strong>
+          <div className="volume-summary-stat">
+            <span className="volume-summary-label">Daily Volume / TVL</span>
+            <strong className="volume-summary-value">
+              {formatPercent(summary.dailyVolumeTvlPct)}
+            </strong>
           </div>
         </div>
       ) : null}

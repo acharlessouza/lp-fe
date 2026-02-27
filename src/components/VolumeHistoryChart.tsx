@@ -160,7 +160,7 @@ export function VolumeHistoryChart({ data, loading, error, stats }: VolumeHistor
                   y={tick.y + 3}
                   textAnchor="end"
                   fontSize="10"
-                  fill="var(--muted)"
+                  fill="var(--text3)"
                 >
                   {formatAxisVolume(tick.value)}
                 </text>
@@ -180,7 +180,7 @@ export function VolumeHistoryChart({ data, loading, error, stats }: VolumeHistor
                     width={barWidth}
                     height={barHeight}
                     rx="3"
-                    fill={isActive ? 'rgba(42, 157, 143, 0.95)' : 'rgba(42, 157, 143, 0.72)'}
+                    fill={isActive ? 'var(--accent)' : 'var(--accent2)'}
                   />
                 </g>
               )
@@ -205,7 +205,7 @@ export function VolumeHistoryChart({ data, loading, error, stats }: VolumeHistor
                   y={height - 16}
                   textAnchor="middle"
                   fontSize="10"
-                  fill="var(--muted)"
+                  fill="var(--text3)"
                 >
                   {label}
                 </text>

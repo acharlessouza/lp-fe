@@ -34,13 +34,6 @@ type CalculationMethod =
   | 'peak_liquidity_in_range'
   | 'custom'
 
-const CALCULATION_METHOD_OPTIONS: Array<{ value: CalculationMethod; label: string }> = [
-  { value: 'current', label: 'Current Price' },
-  { value: 'avg_liquidity_in_range', label: 'Average Liquidity' },
-  { value: 'peak_liquidity_in_range', label: 'Peak of Distribution (In-Range)' },
-  { value: 'custom', label: 'Custom Price' },
-]
-
 const DEFAULT_CALCULATION_METHOD: CalculationMethod = 'avg_liquidity_in_range'
 
 type LiquidityChartProps = {
@@ -74,6 +67,9 @@ type EstimatedFeesProps = {
 type LiquidityPriceRangeProps = {
   rangeMin: string
   rangeMax: string
+  token0Symbol: string
+  token1Symbol: string
+  currentPriceReference: number | null
   setRangeMin: (value: string) => void
   setRangeMax: (value: string) => void
   isFullRange: boolean
@@ -99,6 +95,8 @@ type LiquidityPriceRangeProps = {
 type DepositAmountProps = {
   token0: string
   token1: string
+  token0IconUrl?: string | null
+  token1IconUrl?: string | null
   depositUsd: string
   setDepositUsd: (value: string) => void
   allocateData: AllocateResponse | null
@@ -1120,7 +1118,7 @@ function PoolPriceChart({
       <div className="chart-header">
         <div>
           <div className="price-title">
-            {token0} / {token1} Pool Price
+            {token0} / {token1} Price
           </div>
         </div>
         <div className="subtitle">{loading ? 'Loading...' : error ? 'API error' : ''}</div>
@@ -1160,8 +1158,8 @@ function PoolPriceChart({
         >
           <defs>
             <linearGradient id="priceFill" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="rgba(231, 111, 81, 0.4)" />
-              <stop offset="100%" stopColor="rgba(231, 111, 81, 0.05)" />
+              <stop offset="0%" stopColor="var(--accentg-strong)" />
+              <stop offset="100%" stopColor="var(--accentg-soft)" />
             </linearGradient>
           </defs>
           <rect x="0" y="0" width={width} height={height} rx="14" fill="var(--chart-bg)" />
@@ -1265,7 +1263,7 @@ function EstimatedFees({ data, loading, error, depositUsd }: EstimatedFeesProps)
       <div className="fees-header">
         <div>
           <div className="fees-title">
-            Estimated Fees <span>(48h)</span>
+            Estimated Fees <span>(24h)</span>
           </div>
           <div className="fees-value">${display24h.toFixed(2)}</div>
         </div>
@@ -1296,6 +1294,9 @@ function EstimatedFees({ data, loading, error, depositUsd }: EstimatedFeesProps)
 function LiquidityPriceRange({
   rangeMin,
   rangeMax,
+  token0Symbol,
+  token1Symbol,
+  currentPriceReference,
   setRangeMin,
   setRangeMax,
   isFullRange,
@@ -1366,8 +1367,6 @@ function LiquidityPriceRange({
   const decimalAdjust = Math.pow(10, resolvedToken0Decimals - resolvedToken1Decimals)
   const minTick = UNISWAP_MIN_TICK
   const maxTick = UNISWAP_MAX_TICK
-  const showCalculationMethod = false
-  const hasSecondaryMetaCard = showCalculationMethod
 
   const handleTimeframeChange = (value: string | number) => {
     const parsed = Number(value)
@@ -1502,15 +1501,6 @@ function LiquidityPriceRange({
     }
   }
 
-  const handleCalculationMethodChange = (value: string) => {
-    const selected = CALCULATION_METHOD_OPTIONS.find((option) => option.value === value)
-    const nextMethod = selected?.value ?? DEFAULT_CALCULATION_METHOD
-    setCalculationMethod(nextMethod)
-    if (nextMethod !== 'custom') {
-      setCustomCalculationPrice('')
-    }
-  }
-
   useEffect(() => {
     if (!isFullRange) {
       return
@@ -1522,6 +1512,20 @@ function LiquidityPriceRange({
       setRangeMax(FULL_RANGE_MAX_INPUT)
     }
   }, [isFullRange, rangeMax, rangeMin, setRangeMax, setRangeMin])
+
+  useEffect(() => {
+    if (calculationMethod !== DEFAULT_CALCULATION_METHOD) {
+      setCalculationMethod(DEFAULT_CALCULATION_METHOD)
+    }
+    if (customCalculationPrice !== '') {
+      setCustomCalculationPrice('')
+    }
+  }, [
+    calculationMethod,
+    customCalculationPrice,
+    setCalculationMethod,
+    setCustomCalculationPrice,
+  ])
 
   const handleMatchTicks = async () => {
     if (poolId === null || poolId === undefined || poolId === '') {
@@ -1593,6 +1597,34 @@ function LiquidityPriceRange({
   const sliderMax = hasMiddleBound
     ? Math.max(middleBound as number, sliderMaxRaw)
     : sliderMaxRaw
+  const referencePrice = Number.isFinite(currentPriceReference)
+    ? Number(currentPriceReference)
+    : hasMiddleBound && Number.isFinite(middleBound)
+      ? (middleBound as number)
+      : Number.NaN
+  const minDeltaPct =
+    Number.isFinite(parsedMin) && Number.isFinite(referencePrice) && referencePrice > 0
+      ? ((parsedMin - referencePrice) / referencePrice) * 100
+      : Number.NaN
+  const maxDeltaPct =
+    Number.isFinite(parsedMax) && Number.isFinite(referencePrice) && referencePrice > 0
+      ? ((parsedMax - referencePrice) / referencePrice) * 100
+      : Number.NaN
+  const formatDeltaPct = (value: number) => {
+    if (!Number.isFinite(value)) {
+      return '--'
+    }
+    const normalized = value === 0 ? 0 : value
+    const prefix = normalized > 0 ? '+' : ''
+    return `${prefix}${normalized.toFixed(2)}%`
+  }
+  const formatAxisPrice = (value: number | null) =>
+    Number.isFinite(value)
+      ? Number(value).toLocaleString('en-US', {
+          maximumFractionDigits: 2,
+        })
+      : '--'
+  const quoteLabel = `${token1Symbol} per ${token0Symbol}`
 
   return (
     <div className="card range-card">
@@ -1601,14 +1633,13 @@ function LiquidityPriceRange({
       <input type="hidden" name="token1_decimals" value={resolvedToken1Decimals} />
       <input type="hidden" name="min_tick" value={minTickValue ?? ''} />
       <input type="hidden" name="max_tick" value={maxTickValue ?? ''} />
+      <input type="hidden" name="calculation_method" value={calculationMethod} />
+      <input type="hidden" name="custom_calculation_price" value={customCalculationPrice} />
       <div className="range-header">
-        <div>
-          <div className="range-title">Liquidity Price Range</div>
-          <div className="range-subtitle">Suggested range for balanced exposure</div>
-        </div>
+        <div className="range-title">Price Range</div>
         <div className="range-badges">
           <button
-            className="chip is-active match-ticks"
+            className="range-match-btn"
             type="button"
             onClick={handleMatchTicks}
             disabled={!poolId || !hasBounds || isMatching}
@@ -1616,25 +1647,28 @@ function LiquidityPriceRange({
           >
             Match Ticks
           </button>
-          <label className={`chip chip-toggle${!hasBounds ? ' is-disabled' : ''}`}>
-            <input
-              type="checkbox"
-              checked={isFullRange}
-              onChange={(event) => toggleFullRange(event.target.checked)}
-              disabled={!hasBounds}
-            />
+          <div className={`range-toggle${!hasBounds ? ' is-disabled' : ''}`}>
             <span>Full Range</span>
-          </label>
+            <button
+              type="button"
+              className={`range-switch${isFullRange ? '' : ' off'}`}
+              onClick={() => toggleFullRange(!isFullRange)}
+              disabled={!hasBounds}
+              aria-label="Toggle full range"
+            />
+          </div>
         </div>
       </div>
-      <div className={`range-meta${hasSecondaryMetaCard ? '' : ' range-meta--single'}`}>
-        <div className="range-meta-card">
-          <span>Calculation Timeframe (Days)</span>
+      <div className="range-subtitle">{quoteLabel}</div>
+      <div className="range-timeframe-grid">
+        <div className="range-timeframe-field">
+          <label htmlFor="timeframeDaysInput">Timeframe (days)</label>
           <div className="timeframe-controls">
             <button type="button" onClick={() => handleTimeframeChange(timeframeDays - 1)}>
               -
             </button>
             <input
+              id="timeframeDaysInput"
               type="number"
               min="1"
               max="365"
@@ -1646,41 +1680,14 @@ function LiquidityPriceRange({
             </button>
           </div>
         </div>
-        {showCalculationMethod ? (
-          <div className="range-meta-card">
-            <span>Calculation Method</span>
-            <select
-              value={calculationMethod}
-              onChange={(event) => handleCalculationMethodChange(event.target.value)}
-              aria-label="Calculation Method"
-            >
-              {CALCULATION_METHOD_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            {calculationMethod === 'custom' ? (
-              <div className="custom-calculation-field">
-                <label htmlFor="customCalculationPrice">Custom Calculation Price</label>
-                <input
-                  id="customCalculationPrice"
-                  type="number"
-                  step="any"
-                  min="0"
-                  inputMode="decimal"
-                  value={customCalculationPrice}
-                  onChange={(event) => setCustomCalculationPrice(event.target.value)}
-                  placeholder="0.00"
-                />
-              </div>
-            ) : null}
-          </div>
-        ) : null}
+        <div className="range-timeframe-spacer" aria-hidden="true" />
       </div>
+      <div className="range-divider" />
       <div className="range-inputs">
         <div className="range-input">
-          <label htmlFor="rangeMinInput">Min Price</label>
+          <label htmlFor="rangeMinInput">
+            Min Price <span className="range-input-delta">({formatDeltaPct(minDeltaPct)})</span>
+          </label>
           <div className="range-input-control">
             <button
               type="button"
@@ -1741,7 +1748,9 @@ function LiquidityPriceRange({
         </div>
 
         <div className="range-input">
-          <label htmlFor="rangeMaxInput">Max Price</label>
+          <label htmlFor="rangeMaxInput">
+            Max Price <span className="range-input-delta">({formatDeltaPct(maxDeltaPct)})</span>
+          </label>
           <div className="range-input-control">
             <button
               type="button"
@@ -1874,6 +1883,11 @@ function LiquidityPriceRange({
           disabled={!hasBounds || isFullRange}
         />
       </div>
+      <div className="range-axis-labels">
+        <span>Min: {formatAxisPrice(minBound)}</span>
+        <span>Current: {formatAxisPrice(referencePrice)}</span>
+        <span>Max: {formatAxisPrice(maxBound)}</span>
+      </div>
     </div>
   )
 }
@@ -1881,6 +1895,8 @@ function LiquidityPriceRange({
 function DepositAmount({
   token0,
   token1,
+  token0IconUrl,
+  token1IconUrl,
   depositUsd,
   setDepositUsd,
   allocateData,
@@ -1896,6 +1912,8 @@ function DepositAmount({
   const allocatedUsdTotal = token0Usd + token1Usd
   const token0SharePct = allocatedUsdTotal > 0 ? (token0Usd / allocatedUsdTotal) * 100 : 0
   const token1SharePct = allocatedUsdTotal > 0 ? (token1Usd / allocatedUsdTotal) * 100 : 0
+  const token0Initial = token0.trim().slice(0, 1).toUpperCase() || 'T'
+  const token1Initial = token1.trim().slice(0, 1).toUpperCase() || 'T'
 
   return (
     <div className="card deposit-card">
@@ -1914,7 +1932,12 @@ function DepositAmount({
       <div className="token-rows">
         <div className="token-row">
           <div className="token-main">
-            <strong className="token-symbol">{token0}</strong>
+            <div className="token-symbol-row">
+              <span className="token-symbol-icon" aria-hidden="true">
+                {token0IconUrl ? <img src={token0IconUrl} alt="" /> : token0Initial}
+              </span>
+              <strong className="token-symbol">{token0}</strong>
+            </div>
             <span className="token-allocation">
               {amount0.toFixed(4)} ({token0SharePct.toFixed(2)}%)
             </span>
@@ -1925,7 +1948,12 @@ function DepositAmount({
         </div>
         <div className="token-row">
           <div className="token-main">
-            <strong className="token-symbol">{token1}</strong>
+            <div className="token-symbol-row">
+              <span className="token-symbol-icon" aria-hidden="true">
+                {token1IconUrl ? <img src={token1IconUrl} alt="" /> : token1Initial}
+              </span>
+              <strong className="token-symbol">{token1}</strong>
+            </div>
             <span className="token-allocation">
               {amount1.toFixed(4)} ({token1SharePct.toFixed(2)}%)
             </span>
@@ -1935,6 +1963,9 @@ function DepositAmount({
           </div>
         </div>
       </div>
+      <button type="button" className="action-button create-position-button">
+        Create Position
+      </button>
     </div>
   )
 }
@@ -1950,6 +1981,8 @@ function PoolDetailPage() {
   const token1Param = searchParams.get('token1') ?? ''
   const token0SymbolParam = searchParams.get('token0_symbol')
   const token1SymbolParam = searchParams.get('token1_symbol')
+  const token0IconUrlParam = searchParams.get('token0_icon_url')
+  const token1IconUrlParam = searchParams.get('token1_icon_url')
   const exchangeIdParam = searchParams.get('exchange_id')
   const swappedParam = searchParams.get('swapped_pair')
   const exchangeId = exchangeIdParam ? Number(exchangeIdParam) : Number.NaN
@@ -1987,6 +2020,12 @@ function PoolDetailPage() {
 
   if (token1SymbolParam) {
     backSearch.set('token1_symbol', token1SymbolParam)
+  }
+  if (token0IconUrlParam) {
+    backSearch.set('token0_icon_url', token0IconUrlParam)
+  }
+  if (token1IconUrlParam) {
+    backSearch.set('token1_icon_url', token1IconUrlParam)
   }
   if (swappedParam === 'true' || swappedParam === 'false') {
     backSearch.set('swapped_pair', swappedParam)
@@ -2067,6 +2106,38 @@ function PoolDetailPage() {
     distributionData?.pool?.token1 || allocateData?.token1_symbol || pool?.token1_symbol || 'TOKEN1'
   const displayToken0 = isPairInverted ? token1Label : token0Label
   const displayToken1 = isPairInverted ? token0Label : token1Label
+  const normalizeIconUrl = (value: unknown) => {
+    if (typeof value !== 'string') {
+      return null
+    }
+    const trimmed = value.trim()
+    return trimmed ? trimmed : null
+  }
+  const normalizeSymbol = (value: string | null | undefined) => value?.trim().toLowerCase() ?? ''
+  const queryTokenIconsBySymbol = useMemo(() => {
+    const map = new Map<string, string>()
+    const token0Icon = normalizeIconUrl(token0IconUrlParam)
+    const token1Icon = normalizeIconUrl(token1IconUrlParam)
+    const token0Symbol = normalizeSymbol(token0SymbolParam)
+    const token1Symbol = normalizeSymbol(token1SymbolParam)
+    if (token0Symbol && token0Icon) {
+      map.set(token0Symbol, token0Icon)
+    }
+    if (token1Symbol && token1Icon) {
+      map.set(token1Symbol, token1Icon)
+    }
+    return map
+  }, [token0IconUrlParam, token0SymbolParam, token1IconUrlParam, token1SymbolParam])
+  const token0IconUrl =
+    queryTokenIconsBySymbol.get(normalizeSymbol(token0Label)) ??
+    normalizeIconUrl(pool?.token0_icon_url) ??
+    normalizeIconUrl(pool?.token0?.icon_url) ??
+    normalizeIconUrl(token0IconUrlParam)
+  const token1IconUrl =
+    queryTokenIconsBySymbol.get(normalizeSymbol(token1Label)) ??
+    normalizeIconUrl(pool?.token1_icon_url) ??
+    normalizeIconUrl(pool?.token1?.icon_url) ??
+    normalizeIconUrl(token1IconUrlParam)
 
   const feeTier =
     distributionData?.pool?.fee_tier ?? (Number.isFinite(pool?.fee_tier) ? pool?.fee_tier : null)
@@ -2158,6 +2229,14 @@ function PoolDetailPage() {
     }
     return { min: null, max: null }
   }, [poolPriceData])
+
+  const currentPriceFromPriceChart = useMemo(() => {
+    if (Number.isFinite(matchedCurrentPrice) && Number(matchedCurrentPrice) > 0) {
+      return Number(matchedCurrentPrice)
+    }
+    const price = Number(poolPriceData?.status?.price ?? poolPriceData?.stats?.price)
+    return Number.isFinite(price) && price > 0 ? price : null
+  }, [matchedCurrentPrice, poolPriceData])
 
   const resolveRequestRange = useCallback(
     (minValue: string, maxValue: string, isFullRangeSelected: boolean) => {
@@ -2710,36 +2789,24 @@ function PoolDetailPage() {
   return (
     <main className="pool-detail">
       <header className="pool-detail-header">
+        <div className="pool-token-icons" aria-hidden="true">
+          <span className="pool-token-icon pool-token-icon--first">
+            {(displayToken0 || '?').slice(0, 1)}
+          </span>
+          <span className="pool-token-icon pool-token-icon--second">
+            {(displayToken1 || '?').slice(0, 1)}
+          </span>
+        </div>
         <div className="pool-header-main">
-          <Link className="back-link" to={backHref}>
-            &larr; Back to pools
-          </Link>
+          <div className="pdh-name">
+            {displayToken0} / {displayToken1}
+          </div>
           <div className="pool-info-row">
-            <span className="pool-pair-token">{displayToken0}</span>
-            <button
-              type="button"
-              className="icon-button"
-              onClick={handleTogglePairDirection}
-              aria-label="Switch token direction"
-              title="Switch token direction"
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="M4 8h13m0 0-3-3m3 3-3 3M20 16H7m0 0 3-3m-3 3 3 3"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="1.8"
-                />
-              </svg>
-            </button>
-            <span className="pool-pair-token">{displayToken1}</span>
-            <span className="badge">Exchange: {exchangeLabel}</span>
-            <span className="badge">Network: {networkLabel}</span>
-            <span className="badge">Fee Tier: {feeTierLabel}</span>
+            <span className="badge">{exchangeLabel}</span>
+            <span className="badge">{networkLabel}</span>
+            <span className="badge badge-accent">{feeTierLabel}</span>
             <span className="badge badge-address">
-              Pool: <span className="mono">{shortAddress(normalizedPoolAddress)}</span>
+              <span className="mono">{shortAddress(normalizedPoolAddress)}</span>
               <button
                 type="button"
                 className={`icon-button icon-button--small${
@@ -2796,58 +2863,81 @@ function PoolDetailPage() {
                 )}
               </button>
             </span>
-            {poolExplorerUrl ? (
-              <a
-                className="icon-button"
-                href={poolExplorerUrl}
-                target="_blank"
-                rel="noreferrer"
-                aria-label="Open pool on exchange"
-                title="Open pool on exchange"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    d="M9 15 20 4m0 0h-7m7 0v7M20 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h6"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="1.8"
-                  />
-                </svg>
-              </a>
-            ) : (
-              <button
-                type="button"
-                className="icon-button"
-                disabled
-                aria-label="Open pool unavailable"
-                title="Open pool unavailable"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    d="M9 15 20 4m0 0h-7m7 0v7M20 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h6"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="1.8"
-                  />
-                </svg>
-              </button>
-            )}
+          </div>
+        </div>
+        <div className="pdh-actions">
+          <button
+            type="button"
+            className="icon-button"
+            onClick={handleTogglePairDirection}
+            aria-label="Switch token direction"
+            title="Switch token direction"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M4 8h13m0 0-3-3m3 3-3 3M20 16H7m0 0 3-3m-3 3 3 3"
+                fill="none"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="1.8"
+              />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className={`icon-button favorite-icon-button${isFavoritePool ? ' is-active' : ''}`}
+            onClick={handleToggleFavoritePool}
+            aria-label={isFavoritePool ? 'Unfavorite pool' : 'Favorite pool'}
+            title={isFavoritePool ? 'Unfavorite pool' : 'Favorite pool'}
+          >
+            <svg className="star-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m12 3.5 2.6 5.27 5.82.85-4.21 4.1.99 5.79L12 16.76 6.8 19.51l.99-5.79-4.21-4.1 5.82-.85L12 3.5z" />
+            </svg>
+          </button>
+          <Link className="back-link" to={backHref}>
+            &larr; Change Pool
+          </Link>
+          {poolExplorerUrl ? (
+            <a
+              className="icon-button"
+              href={poolExplorerUrl}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Open pool on exchange"
+              title="Open pool on exchange"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M9 15 20 4m0 0h-7m7 0v7M20 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h6"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="1.8"
+                />
+              </svg>
+            </a>
+          ) : (
             <button
               type="button"
-              className={`icon-button favorite-icon-button${isFavoritePool ? ' is-active' : ''}`}
-              onClick={handleToggleFavoritePool}
-              aria-label={isFavoritePool ? 'Unfavorite pool' : 'Favorite pool'}
-              title={isFavoritePool ? 'Unfavorite pool' : 'Favorite pool'}
+              className="icon-button"
+              disabled
+              aria-label="Open pool unavailable"
+              title="Open pool unavailable"
             >
-              <svg className="star-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="m12 3.5 2.6 5.27 5.82.85-4.21 4.1.99 5.79L12 16.76 6.8 19.51l.99-5.79-4.21-4.1 5.82-.85L12 3.5z" />
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M9 15 20 4m0 0h-7m7 0v7M20 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h6"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="1.8"
+                />
               </svg>
             </button>
-          </div>
+          )}
         </div>
       </header>
 
@@ -2873,6 +2963,9 @@ function PoolDetailPage() {
             <LiquidityPriceRange
               rangeMin={rangeMin}
               rangeMax={rangeMax}
+              token0Symbol={displayToken0}
+              token1Symbol={displayToken1}
+              currentPriceReference={currentPriceFromPriceChart}
               setRangeMin={setRangeMin}
               setRangeMax={setRangeMax}
               isFullRange={isFullRange}
@@ -2897,6 +2990,8 @@ function PoolDetailPage() {
             <DepositAmount
               token0={token0Label}
               token1={token1Label}
+              token0IconUrl={token0IconUrl}
+              token1IconUrl={token1IconUrl}
               depositUsd={depositUsd}
               setDepositUsd={setDepositUsd}
               allocateData={allocateData}

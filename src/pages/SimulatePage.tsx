@@ -427,9 +427,17 @@ function SimulatePage() {
     }
     if (selectedToken0) {
       params.set('token0_symbol', tokenOptionLabel(selectedToken0))
+      const token0IconUrl = getTokenIconUrl(selectedToken0)
+      if (token0IconUrl) {
+        params.set('token0_icon_url', token0IconUrl)
+      }
     }
     if (selectedToken1) {
       params.set('token1_symbol', tokenOptionLabel(selectedToken1))
+      const token1IconUrl = getTokenIconUrl(selectedToken1)
+      if (token1IconUrl) {
+        params.set('token1_icon_url', token1IconUrl)
+      }
     }
     return params.toString()
   }, [

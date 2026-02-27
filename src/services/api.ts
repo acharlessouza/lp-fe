@@ -115,9 +115,13 @@ export type PoolDetail = {
   token0_address: string
   token0_symbol: string
   token0_decimals: number
+  token0_icon_url?: string | null
   token1_address: string
   token1_symbol: string
   token1_decimals: number
+  token1_icon_url?: string | null
+  token0?: Token
+  token1?: Token
 }
 
 export type LiquidityDistributionPoint = {
