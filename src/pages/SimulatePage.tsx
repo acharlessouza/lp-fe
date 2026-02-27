@@ -31,11 +31,25 @@ const tokenOptionLabel = (token: Token) => {
 const tokenSearchValue = (token: Token) =>
   `${token.symbol ?? ''} ${token.name ?? ''} ${token.address}`.toLowerCase()
 
+const getIconUrl = (value: { icon_url?: string | null } | { iconUrl?: string | null }) => {
+  const raw =
+    ('icon_url' in value ? value.icon_url : undefined) ??
+    ('iconUrl' in value ? value.iconUrl : undefined)
+  if (typeof raw !== 'string') {
+    return null
+  }
+  const trimmed = raw.trim()
+  return trimmed ? trimmed : null
+}
+
+const getTokenIconUrl = (token: Token) => getIconUrl(token)
+
 type ComboItem<T> = {
   value: string
   label: string
   search: string
   data: T
+  iconUrl?: string | null
 }
 
 type SearchableComboboxProps<T> = {
@@ -46,6 +60,9 @@ type SearchableComboboxProps<T> = {
   disabled: boolean
   isLoading: boolean
   emptyMessage?: string
+  showIcons?: boolean
+  selectedIconUrl?: string | null
+  selectedIconAlt?: string
   onQueryChange: (value: string) => void
   onSelect: (item: ComboItem<T>) => void
 }
@@ -58,6 +75,9 @@ function SearchableCombobox<T>({
   disabled,
   isLoading,
   emptyMessage,
+  showIcons = false,
+  selectedIconUrl,
+  selectedIconAlt,
   onQueryChange,
   onSelect,
 }: SearchableComboboxProps<T>) {
@@ -75,8 +95,13 @@ function SearchableCombobox<T>({
 
   return (
     <div className="combo">
+      {showIcons && selectedIconUrl ? (
+        <span className="combo-leading-icon" aria-hidden="true">
+          <img src={selectedIconUrl} alt={selectedIconAlt ?? ''} />
+        </span>
+      ) : null}
       <input
-        className="combo-input"
+        className={`combo-input${showIcons && selectedIconUrl ? ' has-leading-icon' : ''}`}
         type="text"
         role="combobox"
         aria-autocomplete="list"
@@ -120,6 +145,17 @@ function SearchableCombobox<T>({
                   setOpen(false)
                 }}
               >
+                {showIcons ? (
+                  <span className="combo-option-media" aria-hidden="true">
+                    {item.iconUrl ? (
+                      <img src={item.iconUrl} alt="" />
+                    ) : (
+                      <span className="combo-option-fallback">
+                        {item.label.slice(0, 1).toUpperCase()}
+                      </span>
+                    )}
+                  </span>
+                ) : null}
                 <span>{item.label}</span>
               </button>
             ))
@@ -154,6 +190,85 @@ const formatFeeTier = (pool: Pool) => {
   }
   const percentage = feeValue / 10000
   return `Fee ${percentage.toFixed(2)}%`
+}
+
+const readPoolNumber = (pool: Pool, keys: string[]) => {
+  for (const key of keys) {
+    const value = pool[key]
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) {
+      return parsed
+    }
+  }
+  return null
+}
+
+const formatPercentValue = (value: number | null) => {
+  if (!Number.isFinite(value)) {
+    return '--'
+  }
+  return `${(value as number).toFixed(2)}%`
+}
+
+const getPoolApr = (pool: Pool) => {
+  const directApr = readPoolNumber(pool, [
+    'apr',
+    'average_apr',
+    'estimated_apr',
+    'net_apr',
+    'fee_apr',
+  ])
+  if (Number.isFinite(directApr)) {
+    return directApr as number
+  }
+
+  // Fallback for pool list payloads that expose daily fees/TVL instead of APR.
+  // daily_fees_tvl_pct is interpreted as daily percent; APR ~= daily percent * 365.
+  const dailyFeesTvlPct = readPoolNumber(pool, ['daily_fees_tvl_pct'])
+  if (Number.isFinite(dailyFeesTvlPct)) {
+    return (dailyFeesTvlPct as number) * 365
+  }
+
+  return null
+}
+
+const getPoolPairText = (
+  pool: Pool,
+  fallbackToken0?: string,
+  fallbackToken1?: string,
+  fallbackIndex?: number,
+) => {
+  const poolToken0 =
+    ((pool as { token0_symbol?: string }).token0_symbol as string | undefined) ??
+    (pool.token0?.symbol as string | undefined)
+  const poolToken1 =
+    ((pool as { token1_symbol?: string }).token1_symbol as string | undefined) ??
+    (pool.token1?.symbol as string | undefined)
+
+  if (poolToken0 && poolToken1) {
+    return `${poolToken0} / ${poolToken1}`
+  }
+  if (fallbackToken0 && fallbackToken1) {
+    return `${fallbackToken0} / ${fallbackToken1}`
+  }
+  return poolLabel(pool, fallbackIndex ?? 0)
+}
+
+const getPoolSubLabel = (pool: Pool) => {
+  const name = typeof pool.name === 'string' ? pool.name : ''
+  if (name && !name.includes('/')) {
+    return name
+  }
+  const address =
+    typeof pool.address === 'string'
+      ? pool.address
+      : typeof (pool as { pool_address?: string }).pool_address === 'string'
+        ? ((pool as { pool_address?: string }).pool_address as string)
+        : ''
+  if (address) {
+    return shortAddress(address)
+  }
+  return 'Pool details'
 }
 
 function SimulatePage() {
@@ -232,6 +347,7 @@ function SimulatePage() {
         label: exchange.name,
         search: exchange.name.toLowerCase(),
         data: exchange,
+        iconUrl: getIconUrl(exchange),
       })),
     [exchanges],
   )
@@ -243,6 +359,7 @@ function SimulatePage() {
         label: network.name,
         search: network.name.toLowerCase(),
         data: network,
+        iconUrl: getIconUrl(network),
       })),
     [networks],
   )
@@ -254,6 +371,7 @@ function SimulatePage() {
         label: tokenOptionLabel(token),
         search: tokenSearchValue(token),
         data: token,
+        iconUrl: getTokenIconUrl(token),
       })),
     [orderedTokens],
   )
@@ -265,6 +383,7 @@ function SimulatePage() {
         label: tokenOptionLabel(token),
         search: tokenSearchValue(token),
         data: token,
+        iconUrl: getTokenIconUrl(token),
       })),
     [orderedPairTokens],
   )
@@ -611,271 +730,340 @@ function SimulatePage() {
     return () => controller.abort()
   }, [exchangeId, networkId, token0, token1, sameToken])
 
+  const selectedToken0Label = selectedToken0 ? tokenOptionLabel(selectedToken0) : ''
+  const selectedToken1Label = selectedToken1 ? tokenOptionLabel(selectedToken1) : ''
+  const selectedPairLabel =
+    selectedToken0Label && selectedToken1Label
+      ? `${selectedToken0Label} / ${selectedToken1Label}`
+      : 'Select a token pair'
+  const poolFoundMessage = !token0 || !token1
+    ? 'Select token A and token B to search pools.'
+    : sameToken
+      ? 'Token A and Token B must be different.'
+      : poolsStatus === 'loading'
+        ? `Searching pools for ${selectedPairLabel}...`
+        : poolsStatus === 'success'
+          ? `${pools.length} pool${pools.length === 1 ? '' : 's'} found for ${selectedPairLabel}`
+          : 'Matching pools will appear here.'
+
+  const topPoolAprValue = useMemo(() => {
+    const aprValues = pools
+      .map((pool) => getPoolApr(pool))
+      .filter((value): value is number => Number.isFinite(value))
+    if (aprValues.length === 0) {
+      return null
+    }
+    return Math.max(...aprValues)
+  }, [pools])
+
+  const poolsReady = poolsStatus === 'success' && pools.length > 0
+
   return (
-    <main className="simulate-page">
-      <section className="hero reveal">
-        <div className="hero-content">
-          <span className="eyebrow">Liquidity Radar</span>
-          <h1>Map liquidity pools with confidence before simulating</h1>
-          <p>
-            Select the exchange, network, and token pair. The panel returns the
-            available pools so you can plan your next step.
-          </p>
-          <div className="hero-actions">
-            <div className="mode-toggle" role="tablist" aria-label="Filter mode">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mode === 'pair'}
-                className={mode === 'pair' ? 'active' : ''}
-                onClick={() => setMode('pair')}
-              >
-                Pair
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={false}
-                className="disabled"
-                disabled
-                aria-disabled="true"
-              >
-                Address
-                <span>coming soon</span>
-              </button>
-            </div>
+    <main className="simulate-page simulate-screen">
+      <section className="simulate-head reveal">
+        <div className="simulate-head-row">
+          <h1>Simulate</h1>
+          <div className="simulate-tabs" role="tablist" aria-label="Simulation products">
+            <button type="button" className="simulate-tab is-active" role="tab" aria-selected="true">
+              Liquidity Pools
+            </button>
+            <button type="button" className="simulate-tab" disabled aria-disabled="true">
+              Options <span className="soon-badge">soon</span>
+            </button>
           </div>
-        </div>
-        <div className="hero-card">
-          <div className="hero-card-title">Selection checklist</div>
-          <div className="hero-steps">
-            <div className="hero-step">
-              <span>1</span>
-              <div>
-                <strong>Exchange</strong>
-                <p>Pick the primary marketplace.</p>
-              </div>
-            </div>
-            <div className="hero-step">
-              <span>2</span>
-              <div>
-                <strong>Network</strong>
-                <p>Choose the chain where the pool lives.</p>
-              </div>
-            </div>
-            <div className="hero-step">
-              <span>3</span>
-              <div>
-                <strong>Tokens</strong>
-                <p>Define the target pair.</p>
-              </div>
-            </div>
+          <div className="simulate-view-toggle" role="tablist" aria-label="Simulation mode">
+            <button
+              type="button"
+              className={`simulate-view-btn${mode === 'pair' ? ' is-active' : ''}`}
+              onClick={() => setMode('pair')}
+            >
+              Pair
+            </button>
+            <button type="button" className="simulate-view-btn" disabled aria-disabled="true">
+              Build
+            </button>
           </div>
         </div>
       </section>
 
-      <section className="filters reveal delay-1">
-        <div className="section-header">
-          <div>
-            <h2>Pair filter</h2>
-            <p>Complete each step to unlock the pool list.</p>
+      <section className="simulate-market reveal delay-1" aria-label="Market indicators">
+        <div className="market-card">
+          <div className="market-label">DeFi TVL</div>
+          <div className="market-value">$89.4B</div>
+          <div className="market-delta is-positive">+1.24% 24h</div>
+        </div>
+        <div className="market-card">
+          <div className="market-label">ETH Gas (gwei)</div>
+          <div className="market-value">
+            8.2 <span className="market-inline">Low</span>
           </div>
-          <div className="status-indicator">
-            <span className="dot" />
-            <span>Active mode: {mode === 'pair' ? 'Pair' : 'Address'}</span>
+          <div className="market-sub">Ideal for rebalancing</div>
+          <div className="market-bar">
+            <span style={{ width: '18%', background: 'var(--green)' }} />
           </div>
         </div>
-
-        <div className="filter-card">
-          <div className="form-grid">
-            <label className="field">
-              <span>Exchange</span>
-              <SearchableCombobox
-                id="exchange"
-                placeholder={
-                  exchangesStatus === 'loading'
-                    ? 'Loading exchanges...'
-                    : 'Select exchange'
-                }
-                items={exchangeItems}
-                query={exchangeQuery}
-                disabled={exchangesStatus === 'loading' || exchangesStatus === 'error'}
-                isLoading={exchangesStatus === 'loading'}
-                emptyMessage="No exchanges found."
-                onQueryChange={handleExchangeQueryChange}
-                onSelect={handleExchangeSelect}
-              />
-              {exchangesStatus === 'error' && (
-                <span className="field-error">
-                  {exchangesError || 'Unable to load exchanges.'}
-                </span>
-              )}
-            </label>
-
-            <label className="field">
-              <span>Network</span>
-              <SearchableCombobox
-                id="network"
-                placeholder={
-                  !exchangeId
-                    ? 'Select an exchange first'
-                    : networksStatus === 'loading'
-                      ? 'Loading networks...'
-                      : 'Select network'
-                }
-                items={networkItems}
-                query={networkQuery}
-                disabled={
-                  !exchangeId ||
-                  networksStatus === 'loading' ||
-                  networksStatus === 'error'
-                }
-                isLoading={networksStatus === 'loading'}
-                emptyMessage="No networks found."
-                onQueryChange={handleNetworkQueryChange}
-                onSelect={handleNetworkSelect}
-              />
-              {networksStatus === 'error' && (
-                <span className="field-error">
-                  {networksError || 'Unable to load networks.'}
-                </span>
-              )}
-            </label>
-
-            <div className="field">
-              <span>Select Pair</span>
-              <div className="field-row">
-                <SearchableCombobox
-                  id="token0"
-                  placeholder={
-                    !networkId
-                      ? 'Select a network first'
-                      : tokensStatus === 'loading'
-                        ? 'Loading tokens...'
-                        : 'Select token A'
-                  }
-                  items={tokenItems}
-                  query={token0Query}
-                  disabled={
-                    !networkId || tokensStatus === 'loading' || tokensStatus === 'error'
-                  }
-                  isLoading={tokensStatus === 'loading'}
-                  emptyMessage="No tokens found."
-                  onQueryChange={handleToken0QueryChange}
-                  onSelect={handleToken0Select}
-                />
-                <SearchableCombobox
-                  id="token1"
-                  placeholder={
-                    !token0
-                      ? 'Select token A first'
-                      : pairTokensStatus === 'loading'
-                        ? 'Loading related tokens...'
-                        : 'Select token B'
-                  }
-                  items={pairTokenItems}
-                  query={token1Query}
-                  disabled={
-                    !token0 ||
-                    pairTokensStatus === 'loading' ||
-                    pairTokensStatus === 'error'
-                  }
-                  isLoading={pairTokensStatus === 'loading'}
-                  emptyMessage="No token pairs found."
-                  onQueryChange={handleToken1QueryChange}
-                  onSelect={handleToken1Select}
-                />
-              </div>
-              {tokensStatus === 'error' && (
-                <span className="field-error">
-                  {tokensError || 'Unable to load tokens.'}
-                </span>
-              )}
-              {pairTokensStatus === 'error' && (
-                <span className="field-error">
-                  {pairTokensError || 'Unable to load token pairs.'}
-                </span>
-              )}
-            </div>
+        <div className="market-card">
+          <div className="market-label">ETH Dominance</div>
+          <div className="market-value">17.4%</div>
+          <div className="market-delta">-0.3% 7d</div>
+          <div className="market-bar">
+            <span className="market-bar-neutral" style={{ width: '58%' }} />
+          </div>
+        </div>
+        <div className="market-card">
+          <div className="market-label">Top Pool APR (14d)</div>
+          <div className="market-value market-accent">
+            {topPoolAprValue === null ? '--' : formatPercentValue(topPoolAprValue)}
+          </div>
+          <div className="market-sub">
+            {selectedToken0Label && selectedToken1Label
+              ? `${selectedPairLabel} · ${selectedExchange?.name ?? 'Exchange'}`
+              : 'Select a pair to inspect opportunities'}
           </div>
         </div>
       </section>
 
-      <section className="pools reveal delay-2">
-        <div className="section-header">
-          <div>
-            <h2>Pool list</h2>
-            <p>Pick a pool to continue to simulation.</p>
+      <section className="simulate-layout reveal delay-2">
+        <div className="simulate-panel">
+          <div className="simulate-panel-title">Pool Selection</div>
+
+          <div className="simulate-seg" role="tablist" aria-label="Selection method">
+            <button
+              type="button"
+              className={`simulate-seg-btn${mode === 'pair' ? ' is-active' : ''}`}
+              onClick={() => setMode('pair')}
+            >
+              By Pair
+            </button>
+            <button type="button" className="simulate-seg-btn" disabled aria-disabled="true">
+              By Address
+            </button>
           </div>
-          <div className="status-indicator">
-            <span className="dot" />
-            <span>
-              {poolsStatus === 'loading'
-                ? 'Fetching pools...'
-                : `${pools.length} pools found`}
-            </span>
-          </div>
-        </div>
 
-        {sameToken && (
-          <div className="status-message error">
-            Token A and Token B must be different to search pools.
-          </div>
-        )}
-
-        {!token0 || !token1 ? (
-          <div className="status-message">Select token A and token B.</div>
-        ) : null}
-
-        {poolsStatus === 'error' && (
-          <div className="status-message error">
-            {poolsError || 'Unable to load pools.'}
-          </div>
-        )}
-
-        {poolsStatus === 'loading' && (
-          <div className="status-message">Looking up available pools...</div>
-        )}
-
-        {poolsStatus === 'success' && pools.length === 0 && (
-          <div className="status-message">No pools found for this pair.</div>
-        )}
-
-        {pools.length > 0 && (
-          <div className="pools-grid">
-            {pools.map((pool, index) => {
-              const poolAddress = resolvePoolAddress(pool)
-              const href = getPoolDetailsHref(poolAddress)
-              const content = (
-                <article
-                  className={`pool-card${href ? '' : ' disabled'}`}
-                  aria-disabled={!href}
-                >
-                  <div className="pool-title">{poolLabel(pool, index)}</div>
-                  <div className="pool-meta">
-                    <span className="meta-chip">{formatFeeTier(pool)}</span>
-                  </div>
-                </article>
-              )
-
-              if (!href) {
-                return (
-                  <div key={`${pool.id ?? poolAddress ?? index}`}>{content}</div>
-                )
+          <div className="simulate-field">
+            <label htmlFor="exchange">Exchange</label>
+            <SearchableCombobox
+              id="exchange"
+              placeholder={
+                exchangesStatus === 'loading' ? 'Loading exchanges...' : 'Select exchange'
               }
-
-              return (
-                <Link
-                  key={`${pool.id ?? poolAddress ?? index}`}
-                  className="pool-card-link"
-                  to={href}
-                >
-                  {content}
-                </Link>
-              )
-            })}
+              items={exchangeItems}
+              query={exchangeQuery}
+              disabled={exchangesStatus === 'loading' || exchangesStatus === 'error'}
+              isLoading={exchangesStatus === 'loading'}
+              emptyMessage="No exchanges found."
+              showIcons
+              selectedIconUrl={selectedExchange ? getIconUrl(selectedExchange) : null}
+              selectedIconAlt={selectedExchange?.name ?? 'Exchange'}
+              onQueryChange={handleExchangeQueryChange}
+              onSelect={handleExchangeSelect}
+            />
+            {exchangesStatus === 'error' && (
+              <span className="simulate-field-error">
+                {exchangesError || 'Unable to load exchanges.'}
+              </span>
+            )}
           </div>
-        )}
+
+          <div className="simulate-field">
+            <label htmlFor="network">Network</label>
+            <SearchableCombobox
+              id="network"
+              placeholder={
+                !exchangeId
+                  ? 'Select an exchange first'
+                  : networksStatus === 'loading'
+                    ? 'Loading networks...'
+                    : 'Select network'
+              }
+              items={networkItems}
+              query={networkQuery}
+              disabled={!exchangeId || networksStatus === 'loading' || networksStatus === 'error'}
+              isLoading={networksStatus === 'loading'}
+              emptyMessage="No networks found."
+              showIcons
+              selectedIconUrl={selectedNetwork ? getIconUrl(selectedNetwork) : null}
+              selectedIconAlt={selectedNetwork?.name ?? 'Network'}
+              onQueryChange={handleNetworkQueryChange}
+              onSelect={handleNetworkSelect}
+            />
+            {networksStatus === 'error' && (
+              <span className="simulate-field-error">
+                {networksError || 'Unable to load networks.'}
+              </span>
+            )}
+          </div>
+
+          <div className="simulate-token-grid">
+            <div className="simulate-field">
+              <label htmlFor="token0">Token A</label>
+              <SearchableCombobox
+                id="token0"
+                placeholder={
+                  !networkId
+                    ? 'Select a network first'
+                    : tokensStatus === 'loading'
+                      ? 'Loading tokens...'
+                      : 'Select token A'
+                }
+                items={tokenItems}
+                query={token0Query}
+                disabled={!networkId || tokensStatus === 'loading' || tokensStatus === 'error'}
+                isLoading={tokensStatus === 'loading'}
+                emptyMessage="No tokens found."
+                showIcons
+                selectedIconUrl={selectedToken0 ? getTokenIconUrl(selectedToken0) : null}
+                selectedIconAlt={selectedToken0Label}
+                onQueryChange={handleToken0QueryChange}
+                onSelect={handleToken0Select}
+              />
+            </div>
+            <div className="simulate-field">
+              <label htmlFor="token1">Token B</label>
+              <SearchableCombobox
+                id="token1"
+                placeholder={
+                  !token0
+                    ? 'Select token A first'
+                    : pairTokensStatus === 'loading'
+                      ? 'Loading related tokens...'
+                      : 'Select token B'
+                }
+                items={pairTokenItems}
+                query={token1Query}
+                disabled={!token0 || pairTokensStatus === 'loading' || pairTokensStatus === 'error'}
+                isLoading={pairTokensStatus === 'loading'}
+                emptyMessage="No token pairs found."
+                showIcons
+                selectedIconUrl={selectedToken1 ? getTokenIconUrl(selectedToken1) : null}
+                selectedIconAlt={selectedToken1Label}
+                onQueryChange={handleToken1QueryChange}
+                onSelect={handleToken1Select}
+              />
+            </div>
+          </div>
+
+          {tokensStatus === 'error' && (
+            <div className="simulate-inline-error">
+              {tokensError || 'Unable to load tokens.'}
+            </div>
+          )}
+          {pairTokensStatus === 'error' && (
+            <div className="simulate-inline-error">
+              {pairTokensError || 'Unable to load token pairs.'}
+            </div>
+          )}
+
+          <div className="simulate-divider" />
+          <div className="simulate-panel-foot">{poolFoundMessage}</div>
+        </div>
+
+        <div className="simulate-panel">
+          <div className="simulate-panel-title">Matching Pools</div>
+
+          {sameToken && (
+            <div className="simulate-status simulate-status-error">
+              Token A and Token B must be different to search pools.
+            </div>
+          )}
+          {!token0 || !token1 ? (
+            <div className="simulate-status">
+              Select token A and token B to list matching pools.
+            </div>
+          ) : null}
+          {poolsStatus === 'error' && (
+            <div className="simulate-status simulate-status-error">
+              {poolsError || 'Unable to load pools.'}
+            </div>
+          )}
+          {poolsStatus === 'loading' && (
+            <div className="simulate-status">Looking up available pools...</div>
+          )}
+          {poolsStatus === 'success' && pools.length === 0 && (
+            <div className="simulate-status">No pools found for this pair.</div>
+          )}
+
+          {poolsReady && (
+            <div className="simulate-pool-list">
+              {pools.map((pool, index) => {
+                const poolAddress = resolvePoolAddress(pool)
+                const href = getPoolDetailsHref(poolAddress)
+                const pairText = getPoolPairText(
+                  pool,
+                  selectedToken0Label || undefined,
+                  selectedToken1Label || undefined,
+                  index,
+                )
+                const subtitle = getPoolSubLabel(pool)
+
+                const content = (
+                  <article
+                    className={`simulate-pool-card${index === 0 ? ' is-featured' : ''}${href ? '' : ' is-disabled'}`}
+                    aria-disabled={!href}
+                  >
+                    <div className="simulate-pool-top">
+                      <div className="simulate-pool-main">
+                        <div className="simulate-token-icons" aria-hidden="true">
+                          <span>{(selectedToken0Label || 'A').slice(0, 1)}</span>
+                          <span>{(selectedToken1Label || 'B').slice(0, 1)}</span>
+                        </div>
+                        <div>
+                          <div className="simulate-pool-pair">{pairText}</div>
+                          <div className="simulate-pool-subtitle">{subtitle}</div>
+                          <div className="simulate-pool-tags">
+                            <span className="simulate-tag">
+                              {selectedExchange?.name ?? 'Exchange'}
+                            </span>
+                            <span className="simulate-tag">
+                              {selectedNetwork?.name ?? 'Network'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="simulate-pool-side">
+                        <span className="simulate-fee-pill">{formatFeeTier(pool).replace('Fee ', '')}</span>
+                      </div>
+                    </div>
+
+                    {href && (
+                      <div className="simulate-card-action">
+                        <span className="simulate-action-btn">Simulate →</span>
+                      </div>
+                    )}
+                  </article>
+                )
+
+                if (!href) {
+                  return <div key={`${pool.id ?? poolAddress ?? index}`}>{content}</div>
+                }
+
+                return (
+                  <Link
+                    key={`${pool.id ?? poolAddress ?? index}`}
+                    className="simulate-pool-link"
+                    to={href}
+                  >
+                    {content}
+                  </Link>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="simulate-recent reveal delay-2">
+        <div className="simulate-recent-head">
+          <h2>Recently Viewed</h2>
+          <span className="simulate-pro-pill">PRO</span>
+        </div>
+        <div className="simulate-recent-card">
+          <div className="simulate-lock">Locked</div>
+          <p>Recently viewed pools are available for Pro users.</p>
+          <button type="button" className="simulate-upgrade-btn" disabled aria-disabled="true">
+            Upgrade to Pro
+          </button>
+        </div>
       </section>
     </main>
   )

@@ -66,12 +66,14 @@ async function getErrorMessage(response: Response) {
 export type Exchange = {
   id: number
   name: string
+  icon_url?: string | null
 }
 
 export type Network = {
   id: number
   name: string
   chain_id?: number
+  icon_url?: string | null
 }
 
 export type Token = {
@@ -79,13 +81,24 @@ export type Token = {
   symbol?: string
   name?: string
   decimals?: number
+  icon_url?: string | null
 }
 
 export type Pool = {
   id?: number | string
   address?: string
+  pool_address?: string
   name?: string
   fee?: number | string
+  fee_tier?: number | string
+  tvl_usd?: number | string | null
+  avg_daily_fees_usd?: number | string | null
+  daily_fees_tvl_pct?: number | string | null
+  avg_daily_volume_usd?: number | string | null
+  daily_volume_tvl_pct?: number | string | null
+  price_volatility_pct?: number | string | null
+  correlation?: number | string | null
+  geometric_mean_price?: number | string | null
   token0?: Token
   token1?: Token
   [key: string]: unknown

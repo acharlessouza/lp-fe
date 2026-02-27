@@ -1,0 +1,2071 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pool Atlas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:       #070b0f;
+  --bg2:      #0d1117;
+  --bg3:      #131b24;
+  --bg4:      #1a2535;
+  --bg5:      #1f2d40;
+  --border:   rgba(99,179,237,0.1);
+  --border2:  rgba(99,179,237,0.2);
+  --text:     #e2eaf4;
+  --text2:    #7a9cbf;
+  --text3:    #3d5a78;
+  --accent:   #00d4ff;
+  --accent2:  #0099cc;
+  --accentg:  rgba(0,212,255,0.15);
+  --green:    #39d98a;
+  --red:      #ff5757;
+  --orange:   #ff9500;
+  --yellow:   #ffd60a;
+  --fhead:    'Outfit', sans-serif;
+  --fbody:    'Inter', sans-serif;
+  --fmono:    'IBM Plex Mono', monospace;
+  --r:        8px;
+  --rl:       14px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:14px;scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:var(--fbody);line-height:1.5;min-height:100vh;overflow-x:hidden}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:var(--bg2)}
+::-webkit-scrollbar-thumb{background:var(--bg5);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--text3)}
+
+/* ── GRID BG TEXTURE ── */
+body::before {
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:
+    linear-gradient(rgba(99,179,237,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(99,179,237,0.03) 1px, transparent 1px);
+  background-size:40px 40px;
+}
+
+/* ── NAV ── */
+.nav{
+  position:sticky;top:0;z-index:200;height:52px;
+  display:flex;align-items:center;padding:0 24px;gap:0;
+  background:rgba(7,11,15,0.92);
+  backdrop-filter:blur(24px);
+  border-bottom:1px solid var(--border);
+}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;margin-right:32px;flex-shrink:0}
+.brand-logo{
+  width:30px;height:30px;border-radius:8px;
+  background:linear-gradient(135deg,var(--accent),#0066ff);
+  display:flex;align-items:center;justify-content:center;
+  font-size:15px;font-weight:700;color:#000;font-family:var(--fhead);
+}
+.brand-name{font-family:var(--fhead);font-weight:700;font-size:15px;color:var(--text);letter-spacing:-0.01em}
+.nav-links{display:flex;gap:2px;flex:1}
+.nl{
+  padding:5px 13px;border-radius:6px;
+  font-size:13px;font-weight:500;
+  color:var(--text2);text-decoration:none;
+  border:none;background:none;cursor:pointer;
+  font-family:var(--fbody);
+  transition:color .15s,background .15s;
+}
+.nl:hover{color:var(--text);background:var(--bg3)}
+.nl.active{color:var(--accent);background:rgba(0,212,255,0.08)}
+.nl.dis{color:var(--text3);cursor:not-allowed}
+.nav-r{display:flex;align-items:center;gap:8px}
+
+/* ── SCREEN SWITCHER ── */
+.sw{
+  display:flex;gap:6px;padding:10px 24px;
+  background:var(--bg2);border-bottom:1px solid var(--border);
+  flex-wrap:wrap;align-items:center;position:relative;z-index:1;
+}
+.sw-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-right:4px}
+.swb{
+  padding:5px 13px;border-radius:6px;font-size:12px;font-weight:500;
+  border:1px solid var(--border);background:transparent;color:var(--text2);
+  cursor:pointer;transition:all .15s;font-family:var(--fbody);
+}
+.swb:hover{border-color:var(--border2);color:var(--text)}
+.swb.active{background:rgba(0,212,255,0.12);color:var(--accent);border-color:rgba(0,212,255,0.3)}
+
+/* ── SCREENS ── */
+.screen{display:none;position:relative;z-index:1}
+.screen.on{display:block}
+
+/* ── HELPERS ── */
+.wrap{max-width:1380px;margin:0 auto;padding:24px 24px 60px}
+.flex{display:flex}.fc{flex-direction:column}
+.aic{align-items:center}.jb{justify-content:space-between}.g4{gap:4px}.g8{gap:8px}.g12{gap:12px}.g16{gap:16px}.g20{gap:20px}.g24{gap:24px}
+.mt4{margin-top:4px}.mt8{margin-top:8px}.mt12{margin-top:12px}.mt16{margin-top:16px}.mt20{margin-top:20px}.mt24{margin-top:24px}
+.mb8{margin-bottom:8px}.mb12{margin-bottom:12px}.mb16{margin-bottom:16px}.mb20{margin-bottom:20px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.g4c{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px}
+.mono{font-family:var(--fmono)}
+.dim{color:var(--text2)}.dimmer{color:var(--text3)}
+.green{color:var(--green)}.red{color:var(--red)}.accent{color:var(--accent)}
+.bold{font-weight:600}.small{font-size:11px}
+.relative{position:relative}
+
+/* ── BUTTONS ── */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:7px 16px;border-radius:var(--r);
+  font-size:13px;font-weight:500;font-family:var(--fbody);
+  border:none;cursor:pointer;transition:all .15s;
+}
+.btn-ghost{background:var(--bg3);color:var(--text2);border:1px solid var(--border)}
+.btn-ghost:hover{color:var(--text);border-color:var(--border2)}
+.btn-accent{background:var(--accent);color:#000;font-weight:600}
+.btn-accent:hover{background:#33ddff}
+.btn-outline{background:transparent;color:var(--accent);border:1px solid rgba(0,212,255,0.35)}
+.btn-outline:hover{background:rgba(0,212,255,0.08)}
+.btn-sm{padding:5px 12px;font-size:12px}
+.btn-lg{padding:11px 26px;font-size:14px;border-radius:10px}
+.btn-full{width:100%;padding:11px}
+.btn-cta{
+  background:linear-gradient(135deg,var(--accent) 0%,#0066ff 100%);
+  color:#000;font-weight:700;
+}
+.btn-cta:hover{opacity:.9}
+
+/* ── CARD ── */
+.card{
+  background:var(--bg2);border:1px solid var(--border);
+  border-radius:var(--rl);padding:18px;
+}
+.card-sm{padding:14px}
+.card-title{font-family:var(--fhead);font-weight:700;font-size:14px;color:var(--text)}
+.card-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px}
+
+/* ── TAG / PILL ── */
+.tag{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:5px;font-size:10px;font-family:var(--fmono);background:var(--bg4);border:1px solid var(--border);color:var(--text2)}
+.pill{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:100px;font-size:11px;font-family:var(--fmono)}
+.pill-c{background:rgba(0,212,255,0.1);color:var(--accent);border:1px solid rgba(0,212,255,0.25)}
+.pill-g{background:rgba(57,217,138,0.1);color:var(--green);border:1px solid rgba(57,217,138,0.25)}
+.pill-n{background:var(--bg4);color:var(--text2);border:1px solid var(--border)}
+.badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:5px;font-size:11px;font-weight:600}
+.badge-g{background:rgba(57,217,138,0.12);color:var(--green)}
+.badge-r{background:rgba(255,87,87,0.12);color:var(--red)}
+.badge-o{background:rgba(255,149,0,0.12);color:var(--orange)}
+
+/* ── FORM ── */
+.inp{
+  width:100%;background:var(--bg3);border:1px solid var(--border);
+  border-radius:var(--r);color:var(--text);
+  padding:9px 12px;font-size:13px;font-family:var(--fbody);
+  outline:none;transition:border .15s;
+}
+.inp:focus{border-color:rgba(0,212,255,0.5);background:var(--bg4)}
+.inp::placeholder{color:var(--text3)}
+.sel{appearance:none;cursor:pointer}
+.sel-wrap{position:relative}
+.sel-wrap::after{content:'▾';position:absolute;right:11px;top:50%;transform:translateY(-50%);color:var(--text3);pointer-events:none;font-size:10px}
+.inp-label{display:block;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:5px}
+.inp-wrap{display:flex;flex-direction:column;gap:5px}
+.inp-icon-wrap{position:relative}
+.inp-icon-wrap .inp{padding-left:34px}
+.inp-icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--text3);pointer-events:none}
+
+/* ── NUM INPUT ── */
+.num-inp{display:flex;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.num-inp:focus-within{border-color:rgba(0,212,255,0.5)}
+.num-btn{width:32px;height:36px;background:transparent;border:none;color:var(--text2);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:color .12s,background .12s}
+.num-btn:hover{color:var(--text);background:var(--bg4)}
+.num-inp input{flex:1;background:transparent;border:none;text-align:center;color:var(--text);font-family:var(--fmono);font-size:13px;padding:0;outline:none;min-width:0;height:36px}
+
+/* ── DIVIDER ── */
+.divider{height:1px;background:var(--border);margin:14px 0}
+
+/* ── TABS ── */
+.tabs{display:inline-flex;gap:2px;padding:3px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r)}
+.tb{
+  padding:5px 14px;border-radius:6px;font-size:12px;font-weight:500;
+  border:none;background:transparent;color:var(--text2);
+  cursor:pointer;transition:all .15s;font-family:var(--fbody);white-space:nowrap;
+}
+.tb:hover{color:var(--text)}
+.tb.on{background:var(--bg2);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.5)}
+
+/* ── SEG ── */
+.seg{display:flex;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.segb{
+  flex:1;padding:7px 10px;text-align:center;font-size:12px;font-weight:500;
+  border:none;background:transparent;color:var(--text2);
+  cursor:pointer;transition:all .12s;font-family:var(--fbody);
+  border-right:1px solid var(--border);
+}
+.segb:last-child{border-right:none}
+.segb.on{background:var(--bg4);color:var(--text)}
+
+/* ── TOGGLE ── */
+.toggle{width:36px;height:20px;border-radius:10px;background:var(--accent);position:relative;cursor:pointer;border:none;flex-shrink:0;transition:background .2s}
+.toggle::after{content:'';position:absolute;width:14px;height:14px;background:#000;border-radius:50%;top:3px;right:3px;transition:all .2s}
+.toggle.off{background:var(--bg5)}
+.toggle.off::after{right:auto;left:3px;background:var(--text3)}
+
+/* ── TABLE ── */
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+thead th{
+  text-align:left;padding:9px 14px;
+  font-size:10px;font-weight:600;color:var(--text3);
+  text-transform:uppercase;letter-spacing:.08em;
+  border-bottom:1px solid var(--border);white-space:nowrap;
+  cursor:pointer;user-select:none;transition:color .12s;
+}
+thead th:hover{color:var(--text2)}
+thead th.sort-on{color:var(--accent)}
+.sarr{margin-left:3px;opacity:.5;font-size:9px}
+.sort-on .sarr{opacity:1}
+tbody tr{border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s}
+tbody tr:hover{background:var(--bg3)}
+tbody td{padding:11px 14px;font-size:13px;vertical-align:middle;white-space:nowrap}
+.pool-cell{display:flex;align-items:center;gap:10px}
+.tikons{display:flex}
+.tikon{
+  width:22px;height:22px;border-radius:50%;
+  background:var(--bg5);border:2px solid var(--bg2);
+  display:flex;align-items:center;justify-content:center;
+  font-size:8px;font-weight:700;margin-left:-6px;flex-shrink:0;
+}
+.tikon:first-child{margin-left:0}
+.tikon.eth{background:linear-gradient(135deg,#627eea,#a4b4f7);color:#fff}
+.tikon.usdc{background:linear-gradient(135deg,#2775ca,#5b9cf6);color:#fff}
+.tikon.btc{background:linear-gradient(135deg,#f7931a,#fbbf24);color:#fff}
+.tikon.usdt{background:linear-gradient(135deg,#26a17b,#4ade80);color:#fff}
+.tikon.arb{background:linear-gradient(135deg,#28a0f0,#66c4ff);color:#fff}
+.apr-v{font-family:var(--fmono);font-weight:500;color:var(--green)}
+.tvl-v{font-family:var(--fmono);color:var(--text)}
+.vol-v{font-family:var(--fmono);color:var(--text2)}
+.hidden-col{display:none}
+
+/* ── PAGINATION ── */
+.pag{display:flex;align-items:center;gap:4px;justify-content:flex-end;padding-top:14px}
+.pgb{
+  width:30px;height:30px;border-radius:7px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-family:var(--fmono);
+  border:1px solid var(--border);background:transparent;
+  color:var(--text2);cursor:pointer;transition:all .12s;
+}
+.pgb:hover{border-color:var(--border2);color:var(--text)}
+.pgb.on{background:rgba(0,212,255,0.12);color:var(--accent);border-color:rgba(0,212,255,0.3)}
+
+/* ── STAT ── */
+.stat{display:flex;align-items:baseline;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)}
+.stat:last-child{border-bottom:none}
+.stat-l{font-size:12px;color:var(--text2)}
+.stat-v{font-size:13px;font-family:var(--fmono);color:var(--text)}
+
+/* ── RANGE SLIDER ── */
+.range-track{position:relative;height:4px;background:var(--bg5);border-radius:2px;margin:14px 0 8px}
+.range-fill{position:absolute;height:100%;background:var(--accent);border-radius:2px}
+.range-thumb{
+  position:absolute;width:16px;height:16px;border-radius:50%;
+  background:var(--accent);border:2px solid var(--bg);
+  top:50%;transform:translateY(-50%);cursor:grab;
+  box-shadow:0 0 0 3px rgba(0,212,255,0.2);
+  transition:box-shadow .15s;
+}
+.range-thumb:hover{box-shadow:0 0 0 5px rgba(0,212,255,0.3)}
+
+/* ── HOME ── */
+.hero{
+  padding:90px 24px 70px;text-align:center;position:relative;overflow:hidden;
+}
+.hero-beam{
+  position:absolute;top:0;left:50%;transform:translateX(-50%);
+  width:600px;height:350px;pointer-events:none;
+  background:radial-gradient(ellipse at top,rgba(0,212,255,.18) 0%,transparent 70%);
+}
+.hero-beam2{
+  position:absolute;top:20px;left:50%;transform:translateX(-50%);
+  width:300px;height:2px;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent);
+  opacity:.5;
+}
+.hero h1{
+  font-family:var(--fhead);font-weight:800;
+  font-size:clamp(34px,5vw,58px);
+  line-height:1.08;letter-spacing:-.03em;
+  color:var(--text);
+  max-width:700px;margin:0 auto 6px;
+}
+.hero h1 span{
+  color:transparent;
+  background:linear-gradient(90deg,var(--accent),#0066ff);
+  -webkit-background-clip:text;background-clip:text;
+}
+.hero-sub{font-size:16px;color:var(--text2);max-width:460px;margin:16px auto 36px;line-height:1.65}
+.hero-ctas{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.home-stats{
+  display:grid;grid-template-columns:repeat(4,1fr);
+  gap:1px;background:var(--border);
+  border:1px solid var(--border);border-radius:var(--rl);
+  overflow:hidden;margin:50px auto;max-width:900px;
+}
+.hstat{background:var(--bg2);padding:20px 22px}
+.hstat-v{font-family:var(--fhead);font-weight:800;font-size:24px;color:var(--text)}
+.hstat-l{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-top:3px}
+.features-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;max-width:900px;margin:0 auto}
+.feat{
+  background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);
+  padding:22px;transition:border-color .2s;
+}
+.feat:hover{border-color:var(--border2)}
+.feat-icon{font-size:22px;margin-bottom:10px}
+.feat h3{font-family:var(--fhead);font-weight:700;font-size:14px;margin-bottom:6px}
+.feat p{font-size:13px;color:var(--text2);line-height:1.6}
+
+/* ── TICKER ── */
+.ticker{
+  border-top:1px solid var(--border);border-bottom:1px solid var(--border);
+  background:var(--bg2);overflow:hidden;height:38px;display:flex;align-items:center;
+}
+.tick-inner{display:flex;gap:36px;white-space:nowrap;animation:tick 24s linear infinite;padding:0 18px}
+@keyframes tick{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+.tick-item{display:flex;gap:7px;align-items:center;font-size:11px;font-family:var(--fmono);color:var(--text2)}
+.tick-item .up{color:var(--green)}.tick-item .dn{color:var(--red)}
+
+/* ── MARKET CARDS (Simulate header) ── */
+.mkt-g{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
+.mkt-card{
+  background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);
+  padding:14px 16px;
+}
+.mkt-val{font-family:var(--fhead);font-weight:700;font-size:18px;color:var(--text);line-height:1.2}
+.mkt-sub{font-size:11px;color:var(--text3);margin-top:3px}
+.mkt-delta{font-size:11px;font-family:var(--fmono);margin-top:4px}
+.mkt-bar{height:4px;background:var(--bg5);border-radius:2px;margin-top:8px;overflow:hidden}
+.mkt-bar-fill{height:100%;border-radius:2px;background:var(--accent)}
+
+/* ── SIMULATE LAYOUT ── */
+.sim-layout{display:grid;grid-template-columns:520px 1fr;gap:20px;align-items:start}
+.sim-panel{display:flex;flex-direction:column;gap:14px}
+.sim-big{font-family:var(--fhead);font-weight:800;font-size:36px;color:var(--accent);letter-spacing:-.02em}
+.fee-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)}
+.fee-row:last-child{border-bottom:none}
+
+/* price range specific */
+.pr-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.pr-price-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+/* ── INTERACTIVE CHART STYLES ── */
+.chart-container{position:relative;width:100%}
+.chart-tooltip{
+  position:absolute;background:var(--bg4);border:1px solid var(--border2);
+  border-radius:8px;padding:8px 12px;font-family:var(--fmono);font-size:11px;
+  color:var(--text);pointer-events:none;z-index:50;
+  box-shadow:0 4px 20px rgba(0,0,0,.5);
+  white-space:nowrap;display:none;
+}
+.chart-tooltip-label{color:var(--text3);margin-bottom:2px;font-size:10px}
+canvas{display:block;cursor:crosshair}
+
+/* ── LOCKED ── */
+.locked-overlay{
+  position:absolute;bottom:0;left:0;right:0;height:160px;
+  background:linear-gradient(to bottom,transparent,var(--bg2) 55%);
+  display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
+  padding:20px;gap:10px;
+}
+.lock-msg{font-size:13px;color:var(--text2)}
+
+/* ── POOL DETAIL HEADER ── */
+.pdh{
+  background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);
+  padding:16px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  margin-bottom:20px;
+}
+.pdh-name{font-family:var(--fhead);font-weight:700;font-size:18px}
+.pdh-actions{margin-left:auto;display:flex;gap:8px}
+
+/* ── SEARCH LAYOUT ── */
+.srch-layout{display:grid;grid-template-columns:1fr 380px;gap:20px;align-items:start}
+
+/* ── PRICING ── */
+.price-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;max-width:880px;margin:0 auto}
+.price-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);padding:26px;position:relative}
+.price-card.feat-p{border-color:rgba(0,212,255,.4);box-shadow:0 0 40px rgba(0,212,255,.1)}
+.price-badge{position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:var(--accent);color:#000;font-size:10px;font-weight:700;padding:2px 12px;border-radius:100px;font-family:var(--fmono);letter-spacing:.04em}
+.price-name{font-family:var(--fhead);font-weight:700;font-size:17px}
+.price-amount{font-family:var(--fhead);font-weight:800;font-size:40px;color:var(--text);letter-spacing:-.03em;margin:10px 0 2px}
+.price-amount sup{font-size:18px;vertical-align:super}
+.price-period{font-size:11px;color:var(--text3);margin-bottom:18px}
+.price-feats{list-style:none;display:flex;flex-direction:column;gap:9px;margin:18px 0}
+.price-feats li{display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--text2)}
+.price-feats li::before{content:'✓';color:var(--green);font-weight:700;flex-shrink:0;margin-top:1px}
+.price-feats li.no{color:var(--text3)}
+.price-feats li.no::before{content:'–';color:var(--text3)}
+
+/* ── FOOTER ── */
+footer{border-top:1px solid var(--border);padding:20px 24px;display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--text3);position:relative;z-index:1}
+footer a{color:var(--text3);text-decoration:none}
+footer a:hover{color:var(--text2)}
+
+/* ── COLUMN DROPDOWN ── */
+.col-dropdown{
+  position:absolute;right:0;top:calc(100% + 6px);
+  background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rl);
+  padding:12px;width:220px;z-index:100;display:none;
+  box-shadow:0 8px 32px rgba(0,0,0,.5);
+}
+.col-dropdown.open{display:block}
+.col-row{display:flex;align-items:center;justify-content:space-between;padding:7px 4px;cursor:pointer;border-radius:6px;transition:background .1s}
+.col-row:hover{background:var(--bg4)}
+.col-row span{font-size:12px;color:var(--text2)}
+.col-check{width:16px;height:16px;border-radius:4px;border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0;transition:all .12s}
+.col-check.on{background:var(--accent);border-color:var(--accent);color:#000}
+.col-wrap{position:relative}
+
+/* chart axis text */
+.chart-ax{fill:var(--text3);font-family:'IBM Plex Mono',monospace;font-size:10px}
+
+/* ── MODALS ── */
+.modal-overlay{
+  position:fixed;inset:0;z-index:400;
+  background:rgba(0,0,0,.65);backdrop-filter:blur(6px);
+  display:flex;align-items:center;justify-content:center;
+  padding:20px;opacity:0;pointer-events:none;
+  transition:opacity .2s;
+}
+.modal-overlay.open{opacity:1;pointer-events:all}
+.modal-box{
+  background:var(--bg2);border:1px solid var(--border2);
+  border-radius:var(--rl);padding:32px 28px;
+  width:100%;max-width:400px;position:relative;
+  animation:modalIn .22s ease;
+}
+@keyframes modalIn{from{transform:translateY(14px) scale(.97);opacity:0}to{transform:none;opacity:1}}
+.modal-close{
+  position:absolute;top:14px;right:14px;
+  background:var(--bg4);border:1px solid var(--border);color:var(--text2);
+  width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:13px;
+  display:flex;align-items:center;justify-content:center;
+  transition:all .12s;
+}
+.modal-close:hover{color:var(--text);border-color:var(--border2)}
+.modal-brand{display:flex;align-items:center;gap:8px;margin-bottom:20px}
+.modal-title{font-family:var(--fhead);font-weight:800;font-size:22px;margin-bottom:4px}
+.modal-sub{font-size:13px;color:var(--text2);margin-bottom:20px}
+.btn-social{
+  width:100%;display:flex;align-items:center;justify-content:center;gap:10px;
+  padding:10px 16px;border-radius:var(--r);
+  background:var(--bg3);border:1px solid var(--border2);
+  color:var(--text);font-size:13px;font-weight:500;cursor:pointer;
+  transition:all .15s;font-family:var(--fbody);
+}
+.btn-social:hover{border-color:rgba(99,179,237,0.4);background:var(--bg4)}
+.modal-or{display:flex;align-items:center;gap:10px;margin:16px 0;color:var(--text3);font-size:12px}
+.modal-or::before,.modal-or::after{content:'';flex:1;height:1px;background:var(--border)}
+.modal-field{margin-bottom:12px}
+
+/* ── THEME SWATCHES ── */
+.theme-swatch{
+  width:100%;aspect-ratio:1;border-radius:8px;cursor:pointer;
+  border:2px solid transparent;transition:all .15s;
+  display:flex;align-items:center;justify-content:center;
+  font-size:16px;
+}
+.theme-swatch:hover{border-color:rgba(255,255,255,0.4);transform:scale(1.08)}
+.theme-swatch.active{border-color:#fff;box-shadow:0 0 0 2px rgba(255,255,255,0.3)}
+.theme-swatch-label{font-size:9px;text-align:center;color:var(--text3);margin-top:4px;font-family:var(--fmono);line-height:1.2}
+
+/* ── TOKEN COMBO ── */
+.token-combo{position:relative}
+.token-combo-input{
+  display:flex;align-items:center;gap:8px;cursor:pointer;
+  background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);
+  padding:8px 10px;transition:border .15s;user-select:none;
+}
+.token-combo-input:hover,.token-combo.open .token-combo-input{border-color:var(--border2)}
+.token-combo-val{flex:1;font-size:13px;color:var(--text)}
+.token-combo-arrow{color:var(--text3);font-size:10px;transition:transform .15s}
+.token-combo.open .token-combo-arrow{transform:rotate(180deg)}
+.token-combo-drop{
+  position:absolute;top:calc(100% + 4px);left:0;right:0;
+  background:var(--bg3);border:1px solid var(--border2);border-radius:var(--r);
+  z-index:200;display:none;box-shadow:0 8px 24px rgba(0,0,0,.5);
+}
+.token-combo.open .token-combo-drop{display:block}
+.token-combo-search{border-radius:var(--r) var(--r) 0 0;border-bottom:1px solid var(--border)!important;border:none!important;width:100%}
+.token-combo-list{max-height:200px;overflow-y:auto}
+.token-combo-opt{
+  display:flex;align-items:center;gap:9px;padding:8px 12px;cursor:pointer;
+  transition:background .1s;font-size:13px;
+}
+.token-combo-opt:hover{background:var(--bg4)}
+.token-combo-opt.selected{background:rgba(0,212,255,.08);color:var(--accent)}
+.token-combo-opt-sym{font-weight:600;flex:1}
+.token-combo-opt-name{font-size:11px;color:var(--text3)}
+
+/* ── INTERACTIVE RANGE ── */
+.range-track{position:relative;height:6px;background:var(--bg5);border-radius:3px;margin:16px 0 6px;cursor:pointer}
+.range-fill{position:absolute;height:100%;background:var(--accent);border-radius:3px}
+.range-thumb{
+  position:absolute;width:18px;height:18px;border-radius:50%;
+  background:var(--accent);border:2px solid var(--bg2);
+  top:50%;cursor:grab;
+  box-shadow:0 0 0 3px rgba(0,212,255,0.2);
+  transition:box-shadow .15s;z-index:2;
+}
+.range-thumb:active{cursor:grabbing;box-shadow:0 0 0 6px rgba(0,212,255,0.25)}
+.range-thumb:hover{box-shadow:0 0 0 5px rgba(0,212,255,0.3)}
+
+/* ── INVERT BUTTON ── */
+.invert-btn{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:4px 12px;border-radius:6px;
+  background:rgba(0,212,255,0.08);border:1px solid rgba(0,212,255,0.25);
+  color:var(--accent);font-size:12px;font-weight:500;cursor:pointer;
+  transition:all .15s;font-family:var(--fbody);
+}
+.invert-btn:hover{background:rgba(0,212,255,0.15)}
+
+/* ── CHART PAN/ZOOM ── */
+.chart-controls{display:flex;align-items:center;gap:6px}
+.chart-ctrl-btn{
+  width:26px;height:26px;border-radius:6px;
+  background:var(--bg3);border:1px solid var(--border);
+  color:var(--text2);font-size:13px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:all .12s;font-family:var(--fmono);
+}
+.chart-ctrl-btn:hover{border-color:var(--border2);color:var(--text)}
+.chart-grab{cursor:grab}.chart-grab:active{cursor:grabbing}
+
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <a class="brand" href="#">
+    <div class="brand-logo">PA</div>
+    <span class="brand-name">Pool Atlas</span>
+  </a>
+  <div class="nav-links">
+    <button class="nl" onclick="show('home')">Home</button>
+    <button class="nl" onclick="show('discover')">Discover</button>
+    <button class="nl" onclick="show('search')">Simulate</button>
+    <button class="nl dis">Track</button>
+    <button class="nl" onclick="show('pricing')">Pricing</button>
+  </div>
+  <div class="nav-r">
+    <button class="btn btn-ghost btn-sm" id="themePickerBtn" onclick="toggleThemePicker()" title="Color theme">🎨</button>
+    <button class="btn btn-ghost btn-sm" onclick="showModal('login')">Login</button>
+    <button class="btn btn-accent btn-sm" onclick="showModal('signup')">Sign up</button>
+    <button class="btn btn-ghost btn-sm">Connect Wallet</button>
+  </div>
+</nav>
+
+<!-- THEME PICKER PANEL -->
+<div id="themePicker" style="display:none;position:fixed;top:58px;right:16px;z-index:500;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rl);padding:16px;width:300px;box-shadow:0 12px 40px rgba(0,0,0,.6)">
+  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:12px;font-family:var(--fmono)">Color Theme</div>
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px" id="themeGrid"></div>
+</div>
+
+<!-- LOGIN MODAL -->
+<div class="modal-overlay" id="modal-login" onclick="closeModalOutside(event,'modal-login')">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <button class="modal-close" onclick="closeModal('modal-login')">✕</button>
+    <div class="modal-brand"><div class="brand-logo" style="width:34px;height:34px;font-size:15px">PA</div><span style="font-family:var(--fhead);font-weight:700;font-size:14px">Pool Atlas</span></div>
+    <h2 class="modal-title">Welcome back</h2>
+    <p class="modal-sub">Sign in to your account</p>
+    <button class="btn-social"><svg width="18" height="18" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg> Continue with Google</button>
+    <div class="modal-or"><span>or</span></div>
+    <div class="modal-field"><label class="inp-label">Email</label><input class="inp" type="email" placeholder="you@example.com"></div>
+    <div class="modal-field"><label class="inp-label">Password</label><div style="position:relative"><input class="inp" type="password" id="loginPwd" placeholder="••••••••"><button onclick="togglePwd('loginPwd',this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px">👁</button></div></div>
+    <div style="text-align:right;margin-bottom:16px"><a href="#" style="font-size:12px;color:var(--accent);text-decoration:none">Forgot password?</a></div>
+    <button class="btn btn-cta btn-full">Sign in</button>
+    <p style="text-align:center;font-size:13px;color:var(--text2);margin-top:16px">Don't have an account? <a href="#" onclick="switchModal('login','signup')" style="color:var(--accent);text-decoration:none">Sign up free</a></p>
+  </div>
+</div>
+
+<!-- SIGNUP MODAL -->
+<div class="modal-overlay" id="modal-signup" onclick="closeModalOutside(event,'modal-signup')">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <button class="modal-close" onclick="closeModal('modal-signup')">✕</button>
+    <div class="modal-brand"><div class="brand-logo" style="width:34px;height:34px;font-size:15px">PA</div><span style="font-family:var(--fhead);font-weight:700;font-size:14px">Pool Atlas</span></div>
+    <h2 class="modal-title">Create account</h2>
+    <p class="modal-sub">Start exploring and simulating pools for free</p>
+    <button class="btn-social"><svg width="18" height="18" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg> Sign up with Google</button>
+    <div class="modal-or"><span>or</span></div>
+    <div class="modal-field"><label class="inp-label">Full name</label><input class="inp" type="text" placeholder="Your name"></div>
+    <div class="modal-field"><label class="inp-label">Email</label><input class="inp" type="email" placeholder="you@example.com"></div>
+    <div class="modal-field"><label class="inp-label">Password</label><div style="position:relative"><input class="inp" type="password" id="signupPwd" placeholder="Min. 8 characters"><button onclick="togglePwd('signupPwd',this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px">👁</button></div></div>
+    <button class="btn btn-cta btn-full mt12">Create free account</button>
+    <p style="text-align:center;font-size:12px;color:var(--text3);margin-top:10px">By signing up you agree to our <a href="#" style="color:var(--text2);text-decoration:none">Terms</a> &amp; <a href="#" style="color:var(--text2);text-decoration:none">Privacy Policy</a></p>
+    <p style="text-align:center;font-size:13px;color:var(--text2);margin-top:12px">Already have an account? <a href="#" onclick="switchModal('signup','login')" style="color:var(--accent);text-decoration:none">Sign in</a></p>
+  </div>
+</div>
+
+<!-- SCREEN SWITCHER -->
+<div class="sw">
+  <span class="sw-label">Screens:</span>
+  <button class="swb active" onclick="show('home')">① Home</button>
+  <button class="swb" onclick="show('discover')">② Discover</button>
+  <button class="swb" onclick="show('search')">③ Simulate (Search)</button>
+  <button class="swb" onclick="show('simulate')">④ Simulation Detail</button>
+  <button class="swb" onclick="show('pricing')">⑤ Pricing</button>
+</div>
+
+
+<!-- ═══════════ SCREEN: HOME ═══════════ -->
+<section id="screen-home" class="screen on">
+  <div class="ticker">
+    <div class="tick-inner" id="tickerInner">
+      <span class="tick-item">ETH/USDC <span class="up">▲ 2.34%</span></span>
+      <span class="tick-item">WBTC/ETH <span class="dn">▼ 0.78%</span></span>
+      <span class="tick-item">USDT/USDC <span class="up">▲ 0.01%</span></span>
+      <span class="tick-item">ARB/ETH <span class="up">▲ 5.12%</span></span>
+      <span class="tick-item">OP/USDC <span class="dn">▼ 1.44%</span></span>
+      <span class="tick-item">LINK/ETH <span class="up">▲ 3.20%</span></span>
+      <span class="tick-item">UNI/USDC <span class="up">▲ 1.87%</span></span>
+      <span class="tick-item">MATIC/USDC <span class="up">▲ 4.55%</span></span>
+      <!-- dup for seamless -->
+      <span class="tick-item">ETH/USDC <span class="up">▲ 2.34%</span></span>
+      <span class="tick-item">WBTC/ETH <span class="dn">▼ 0.78%</span></span>
+      <span class="tick-item">USDT/USDC <span class="up">▲ 0.01%</span></span>
+      <span class="tick-item">ARB/ETH <span class="up">▲ 5.12%</span></span>
+      <span class="tick-item">OP/USDC <span class="dn">▼ 1.44%</span></span>
+      <span class="tick-item">LINK/ETH <span class="up">▲ 3.20%</span></span>
+      <span class="tick-item">UNI/USDC <span class="up">▲ 1.87%</span></span>
+      <span class="tick-item">MATIC/USDC <span class="up">▲ 4.55%</span></span>
+    </div>
+  </div>
+  <div class="hero">
+    <div class="hero-beam"></div>
+    <div class="hero-beam2"></div>
+    <div class="pill pill-c mb16" style="display:inline-flex">⬡ Professional LP Workspace</div>
+    <h1>LP smarter on<br><span>every chain</span></h1>
+    <p class="hero-sub">Discover top liquidity pools, model your APR scenarios and track performance — all from one focused workspace.</p>
+    <div class="hero-ctas">
+      <button class="btn btn-cta btn-lg" onclick="show('discover')">Explore Pools →</button>
+      <button class="btn btn-outline btn-lg" onclick="show('search')">Run Simulation</button>
+    </div>
+  </div>
+
+  <div class="home-stats">
+    <div class="hstat"><div class="hstat-v">$78.7B</div><div class="hstat-l">DeFi Market Cap</div></div>
+    <div class="hstat"><div class="hstat-v">$2.69B</div><div class="hstat-l">DeFi Volume 24h</div></div>
+    <div class="hstat"><div class="hstat-v">202</div><div class="hstat-l">Tracked Pools</div></div>
+    <div class="hstat"><div class="hstat-v">6 DEXs</div><div class="hstat-l">Exchanges</div></div>
+  </div>
+
+  <div class="wrap" style="padding-top:0">
+    <h2 style="font-family:var(--fhead);font-weight:700;font-size:20px;text-align:center;margin-bottom:20px">Everything you need to LP smarter</h2>
+    <div class="features-g">
+      <div class="feat">
+        <div class="feat-icon">🔭</div>
+        <h3>Discover</h3>
+        <p>Browse pools ranked by APR, TVL, and fee efficiency across multiple DEXs and EVM networks.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">⚡</div>
+        <h3>Simulate</h3>
+        <p>Model any Uniswap V3 position with realistic fee projections based on historical on-chain volume.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">📊</div>
+        <h3>Track <span class="badge badge-o" style="font-size:10px;vertical-align:middle">soon</span></h3>
+        <p>Monitor all your open positions in real time. Fees earned, impermanent loss, and rebalance alerts.</p>
+      </div>
+    </div>
+  </div>
+  <footer>
+    <span>© 2025 Pool Atlas</span>
+    <div style="display:flex;gap:18px"><a href="#">Terms</a><a href="#">Privacy</a><a href="#">Docs</a></div>
+  </footer>
+</section>
+
+
+<!-- ═══════════ SCREEN: DISCOVER ═══════════ -->
+<section id="screen-discover" class="screen">
+<div class="wrap">
+
+  <div class="flex aic jb mb16" style="flex-wrap:wrap;gap:12px">
+    <div class="flex aic g12">
+      <h1 style="font-family:var(--fhead);font-weight:800;font-size:26px">Discover</h1>
+      <!-- Main tabs that CHANGE data -->
+      <div class="tabs" id="discoverTabs">
+        <button class="tb on" onclick="discoverTab(this,'overview')">Overview</button>
+        <button class="tb" onclick="discoverTab(this,'fees')">Fees</button>
+        <button class="tb" onclick="discoverTab(this,'liquidity')">Liquidity</button>
+      </div>
+    </div>
+    <span class="dim small mono">202 pools</span>
+  </div>
+
+  <!-- Filters -->
+  <div class="flex aic g8 mb16" style="flex-wrap:wrap">
+    <div class="inp-icon-wrap" style="flex:1;min-width:200px;max-width:360px">
+      <svg class="inp-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input class="inp" type="text" id="searchInp" placeholder="Search token or pool…" oninput="filterTable()">
+    </div>
+    <div class="sel-wrap" style="width:170px">
+      <select class="inp sel" id="exFilter" onchange="filterTable()">
+        <option>All Exchanges</option><option>Uniswap V3</option><option>PancakeSwap V3</option><option>SushiSwap V3</option>
+      </select>
+    </div>
+    <div class="sel-wrap" style="width:150px">
+      <select class="inp sel" id="netFilter" onchange="filterTable()">
+        <option>All Networks</option><option>Ethereum</option><option>Arbitrum</option><option>Base</option>
+      </select>
+    </div>
+    <div class="sel-wrap" style="width:180px">
+      <select class="inp sel"><option>Timeframe: 14 days</option><option>7 days</option><option>30 days</option></select>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="resetFilters()">Reset</button>
+  </div>
+
+  <!-- Table card -->
+  <div class="card" style="padding:0;overflow:hidden">
+    <div style="padding:12px 16px 0;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div class="flex g8 aic">
+        <button class="tb on" style="padding:4px 12px;font-size:12px">Top Pools (<span id="poolCount">202</span>)</button>
+        <button class="tb" style="padding:4px 12px;font-size:12px">⭐ Favorites (0)</button>
+      </div>
+      <!-- Column picker -->
+      <div class="col-wrap">
+        <button class="btn btn-ghost btn-sm" onclick="toggleColDrop()" id="colBtn">Columns (<span id="colCount">8</span>/8) ▾</button>
+        <div class="col-dropdown" id="colDropdown">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:8px">Toggle columns</div>
+          <div class="col-row" onclick="toggleCol('col-vol','Vol/TVL')"><span>Daily Vol/TVL</span><div class="col-check on" id="chk-col-vol">✓</div></div>
+          <div class="col-row" onclick="toggleCol('col-fees','Fees')"><span>Avg Daily Fees</span><div class="col-check on" id="chk-col-fees">✓</div></div>
+          <div class="col-row" onclick="toggleCol('col-feespc','Fees/TVL')"><span>Daily Fees/TVL</span><div class="col-check on" id="chk-col-feespc">✓</div></div>
+          <div class="col-row" onclick="toggleCol('col-corr','Correlation')"><span>Correlation</span><div class="col-check on" id="chk-col-corr">✓</div></div>
+          <div class="col-row" onclick="toggleCol('col-vol2','Avg Daily Vol')"><span>Avg Daily Volume</span><div class="col-check on" id="chk-col-vol2">✓</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="tbl-wrap mt8" id="tableArea">
+      <!-- tab header label -->
+      <div id="tabHint" style="padding:6px 16px 2px;font-size:11px;color:var(--text3)">Sorted by: <span id="tabHintTxt" style="color:var(--text2)">Average APR (desc)</span></div>
+      <table>
+        <thead id="thead">
+          <tr>
+            <th style="width:28px"></th>
+            <th>Pool</th>
+            <th class="sort-on" id="th-apr" onclick="sortTable('apr')">Avg APR <span class="sarr">▼</span></th>
+            <th id="th-vol" onclick="sortTable('vol')">Price Volatility <span class="sarr">↕</span></th>
+            <th id="th-tvl" onclick="sortTable('tvl')">TVL <span class="sarr">↕</span></th>
+            <th class="col-corr" id="th-corr" onclick="sortTable('corr')">Correlation <span class="sarr">↕</span></th>
+            <th class="col-fees" id="th-fees" onclick="sortTable('fees')">Avg Daily Fees <span class="sarr">↕</span></th>
+            <th class="col-feespc" id="th-feespc" onclick="sortTable('feespc')">Fees/TVL <span class="sarr">↕</span></th>
+            <th class="col-vol2" id="th-vol2" onclick="sortTable('vol2')">Avg Daily Vol <span class="sarr">↕</span></th>
+            <th class="col-vol" id="th-volpc" onclick="sortTable('volpc')">Vol/TVL <span class="sarr">↕</span></th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="poolTable"></tbody>
+      </table>
+    </div>
+    <div style="padding:10px 16px">
+      <div class="pag">
+        <button class="pgb">‹</button>
+        <button class="pgb on">1</button>
+        <button class="pgb">2</button>
+        <button class="pgb">3</button>
+        <span class="dim" style="padding:0 4px;font-size:12px">…</span>
+        <button class="pgb">21</button>
+        <button class="pgb">›</button>
+        <div class="sel-wrap" style="width:88px;margin-left:6px">
+          <select class="inp sel" style="padding:4px 8px;font-size:12px"><option>10/page</option><option>25/page</option></select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+<footer><span>© 2025 Pool Atlas</span><div style="display:flex;gap:18px"><a href="#">Terms</a><a href="#">Privacy</a></div></footer>
+</section>
+
+
+<!-- ═══════════ SCREEN: SEARCH / SIMULATE ═══════════ -->
+<section id="screen-search" class="screen">
+<div class="wrap">
+
+  <div class="flex aic g12 mb16" style="flex-wrap:wrap">
+    <h1 style="font-family:var(--fhead);font-weight:800;font-size:26px">Simulate</h1>
+    <div class="tabs">
+      <button class="tb on">Liquidity Pools</button>
+      <button class="tb">Options <span class="badge badge-o" style="font-size:10px">soon</span></button>
+    </div>
+    <div style="margin-left:auto;display:flex;gap:6px">
+      <button class="tb on" style="border-radius:var(--r);border:1px solid var(--border);padding:5px 12px">Pair</button>
+      <button class="tb" style="border-radius:var(--r);border:1px solid var(--border);padding:5px 12px">Build</button>
+    </div>
+  </div>
+
+  <!-- Market indicators — more relevant to LPs -->
+  <div class="mkt-g mb20">
+    <div class="mkt-card">
+      <div class="card-label">DeFi TVL</div>
+      <div class="mkt-val">$89.4B</div>
+      <div class="mkt-delta green small mono">▲ +1.24% 24h</div>
+    </div>
+    <div class="mkt-card">
+      <div class="card-label">ETH Gas (gwei)</div>
+      <div class="mkt-val">8.2 <span style="font-size:13px;color:var(--green)">Low</span></div>
+      <div class="mkt-sub">Ideal for rebalancing</div>
+      <div class="mkt-bar mt8"><div class="mkt-bar-fill" style="width:18%;background:var(--green)"></div></div>
+    </div>
+    <div class="mkt-card">
+      <div class="card-label">ETH Dominance</div>
+      <div class="mkt-val">17.4%</div>
+      <div class="mkt-delta dim small mono">▼ -0.3% 7d</div>
+      <div class="mkt-bar mt8"><div class="mkt-bar-fill" style="width:58%"></div></div>
+    </div>
+    <div class="mkt-card">
+      <div class="card-label">Top Pool APR (14d)</div>
+      <div class="mkt-val accent">428%</div>
+      <div class="mkt-sub">USDT/WETH · Uni V3 · 0.3%</div>
+    </div>
+  </div>
+
+  <div class="srch-layout">
+    <!-- Left: Pool Selection -->
+    <div class="card">
+      <div class="card-title mb16">Pool Selection</div>
+      <div class="seg mb16" style="max-width:220px">
+        <button class="segb on">By Pair</button>
+        <button class="segb">By Address</button>
+      </div>
+      <div class="inp-wrap mb12">
+        <label class="inp-label">Exchange</label>
+        <div class="sel-wrap"><select class="inp sel"><option>🔴 Uniswap V3</option><option>🥞 PancakeSwap V3</option><option>🍣 SushiSwap V3</option></select></div>
+      </div>
+      <div class="inp-wrap mb12">
+        <label class="inp-label">Network</label>
+        <div class="sel-wrap"><select class="inp sel"><option>◆ Ethereum</option><option>⚙ Arbitrum</option><option>🔵 Base</option></select></div>
+      </div>
+      <div class="g2 mb12">
+        <div class="inp-wrap">
+          <label class="inp-label">Token A</label>
+          <div class="token-combo" id="comboA">
+            <div class="token-combo-input" onclick="toggleCombo('comboA')">
+              <span class="token-combo-icon" id="iconA"><span class="tikon eth" style="width:18px;height:18px;font-size:8px;margin:0">E</span></span>
+              <span class="token-combo-val" id="valA">WETH</span>
+              <span class="token-combo-arrow">▾</span>
+            </div>
+            <div class="token-combo-drop" id="dropA">
+              <input class="token-combo-search inp" placeholder="Search token…" oninput="filterCombo('comboA',this.value)" onclick="event.stopPropagation()">
+              <div class="token-combo-list" id="listA"></div>
+            </div>
+          </div>
+        </div>
+        <div class="inp-wrap">
+          <label class="inp-label">Token B</label>
+          <div class="token-combo" id="comboB">
+            <div class="token-combo-input" onclick="toggleCombo('comboB')">
+              <span class="token-combo-icon" id="iconB"><span class="tikon usdc" style="width:18px;height:18px;font-size:8px;margin:0">U</span></span>
+              <span class="token-combo-val" id="valB">USDC</span>
+              <span class="token-combo-arrow">▾</span>
+            </div>
+            <div class="token-combo-drop" id="dropB">
+              <input class="token-combo-search inp" placeholder="Search token…" oninput="filterCombo('comboB',this.value)" onclick="event.stopPropagation()">
+              <div class="token-combo-list" id="listB"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="dim small" id="poolFoundMsg">3 pools found for WETH / USDC →</div>
+    </div>
+
+    <!-- Right: Pool list -->
+    <div class="card">
+      <div class="card-title mb16">Matching Pools</div>
+      <div class="flex fc g8">
+        <!-- Featured pool card -->
+        <div class="card card-sm" style="cursor:pointer;border-color:rgba(0,212,255,.3);background:rgba(0,212,255,.04)" onclick="show('simulate')">
+          <div class="flex aic jb">
+            <div class="flex aic g8">
+              <div class="tikons"><div class="tikon eth">E</div><div class="tikon usdc">U</div></div>
+              <div>
+                <div class="bold">WETH / USDC</div>
+                <div class="flex g4 mt4"><span class="tag">Uni V3</span><span class="tag">Ethereum</span></div>
+              </div>
+            </div>
+            <div style="text-align:right">
+              <div class="pill pill-c">0.05%</div>
+              <div class="green mono bold mt4 small">236.82% APR</div>
+            </div>
+          </div>
+          <div class="divider" style="margin:10px 0 8px"></div>
+          <div class="g3" style="gap:8px;font-size:12px">
+            <div><div class="dim small">TVL</div><div class="mono">$82.93m</div></div>
+            <div><div class="dim small">Daily Fees</div><div class="mono">$143.98k</div></div>
+            <div><div class="dim small">Vol/TVL</div><div class="mono">347×</div></div>
+          </div>
+          <div class="mt8" style="text-align:right"><button class="btn btn-accent btn-sm" onclick="show('simulate')">Simulate →</button></div>
+        </div>
+        <div class="card card-sm" style="cursor:pointer" onclick="show('simulate')">
+          <div class="flex aic jb">
+            <div class="flex aic g8">
+              <div class="tikons"><div class="tikon eth">E</div><div class="tikon usdc">U</div></div>
+              <div><div class="bold">WETH / USDC</div><div class="flex g4 mt4"><span class="tag">Uni V3</span><span class="tag">Ethereum</span></div></div>
+            </div>
+            <div style="text-align:right"><div class="pill pill-n">0.30%</div><div class="green mono bold mt4 small">178.50% APR</div></div>
+          </div>
+          <div class="divider" style="margin:10px 0 8px"></div>
+          <div class="g3" style="gap:8px;font-size:12px">
+            <div><div class="dim small">TVL</div><div class="mono">$41.20m</div></div>
+            <div><div class="dim small">Daily Fees</div><div class="mono">$87.60k</div></div>
+            <div><div class="dim small">Vol/TVL</div><div class="mono">213×</div></div>
+          </div>
+        </div>
+        <div class="card card-sm" style="cursor:pointer">
+          <div class="flex aic jb">
+            <div class="flex aic g8">
+              <div class="tikons"><div class="tikon eth">E</div><div class="tikon usdc">U</div></div>
+              <div><div class="bold">WETH / USDC</div><div class="flex g4 mt4"><span class="tag">Uni V3</span><span class="tag">Ethereum</span></div></div>
+            </div>
+            <div style="text-align:right"><div class="pill pill-n">1.00%</div><div class="green mono bold mt4 small">88.21% APR</div></div>
+          </div>
+          <div class="divider" style="margin:10px 0 8px"></div>
+          <div class="g3" style="gap:8px;font-size:12px">
+            <div><div class="dim small">TVL</div><div class="mono">$9.70m</div></div>
+            <div><div class="dim small">Daily Fees</div><div class="mono">$23.40k</div></div>
+            <div><div class="dim small">Vol/TVL</div><div class="mono">82×</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recently Viewed -->
+  <div class="mt24">
+    <div class="flex aic jb mb16">
+      <h2 style="font-family:var(--fhead);font-weight:700;font-size:16px">Recently Viewed</h2>
+      <span class="pill pill-c" style="font-size:10px">PRO</span>
+    </div>
+    <div class="card" style="text-align:center;padding:32px">
+      <div style="font-size:18px;margin-bottom:6px">🔒</div>
+      <p class="dim mb16">Recently viewed pools are available for Pro users</p>
+      <button class="btn btn-accent btn-sm" onclick="show('pricing')">Upgrade to Pro</button>
+    </div>
+  </div>
+
+</div>
+<footer><span>© 2025 Pool Atlas</span><div style="display:flex;gap:18px"><a href="#">Terms</a><a href="#">Privacy</a></div></footer>
+</section>
+
+
+<!-- ═══════════ SCREEN: SIMULATE DETAIL ═══════════ -->
+<section id="screen-simulate" class="screen">
+<div class="wrap">
+
+  <!-- Pool header -->
+  <div class="pdh">
+    <div class="tikons">
+      <div class="tikon eth" style="width:28px;height:28px;font-size:11px">E</div>
+      <div class="tikon usdc" style="width:28px;height:28px;font-size:11px">U</div>
+    </div>
+    <div class="pdh-name" id="pdhName">WETH / USDC</div>
+    <div class="flex aic g8" style="flex-wrap:wrap">
+      <span class="tag">Uniswap V3</span><span class="tag">Ethereum</span>
+      <span class="pill pill-c">0.05%</span>
+      <span class="dim mono small">0x8ad5…4372</span>
+    </div>
+    <div class="pdh-actions">
+      <button class="invert-btn" onclick="invertTokens()" title="Invert price direction">⇄ Invert</button>
+      <button class="btn btn-ghost btn-sm">⭐</button>
+      <button class="btn btn-ghost btn-sm" onclick="show('search')">← Change Pool</button>
+    </div>
+  </div>
+
+  <div class="sim-layout">
+
+    <!-- LEFT PANEL -->
+    <div class="sim-panel">
+
+      <!-- Fees card -->
+      <div class="card" style="border-color:rgba(0,212,255,.25);background:rgba(0,212,255,.03)">
+        <div class="flex aic jb mb12">
+          <div>
+            <div class="card-label">Estimated Fees</div>
+            <div style="font-size:11px;color:var(--text3)">7-day avg volume</div>
+          </div>
+          <span class="badge badge-g">24h</span>
+        </div>
+        <div class="sim-big">$4.76</div>
+        <div class="divider"></div>
+        <div class="fee-row">
+          <span class="stat-l">Monthly (est.)</span>
+          <div class="flex aic g8">
+            <span class="dim mono small">14.29%</span>
+            <span class="bold mono">$142.93</span>
+          </div>
+        </div>
+        <div class="fee-row">
+          <span class="stat-l">Yearly APR</span>
+          <div class="flex aic g8">
+            <span class="green mono small bold">173.89%</span>
+            <span class="bold mono">$1,738.94</span>
+          </div>
+        </div>
+        <button class="btn btn-cta btn-full mt12">Simulate Position Performance →</button>
+      </div>
+
+      <!-- Price Range — FIXED LAYOUT -->
+      <div class="card">
+        <div class="flex aic jb mb12">
+          <div class="card-title">Price Range</div>
+          <div class="flex aic g8">
+            <button class="btn btn-ghost btn-sm">Match Ticks</button>
+            <div class="flex aic g8">
+              <span class="dim small">Full Range</span>
+              <button class="toggle off" id="fullRangeToggle" onclick="this.classList.toggle('off')"></button>
+            </div>
+          </div>
+        </div>
+        <div class="dim small mb12" style="border-bottom:1px solid var(--border);padding-bottom:10px">USDC per WETH</div>
+
+        <!-- Timeframe + Method — two equal columns -->
+        <div class="pr-grid mb4">
+          <div class="inp-wrap">
+            <label class="inp-label">Timeframe (days)</label>
+            <div class="num-inp">
+              <button class="num-btn" onclick="adjustDays(-1)">−</button>
+              <input type="text" id="daysInput" value="7">
+              <button class="num-btn" onclick="adjustDays(1)">+</button>
+            </div>
+          </div>
+          <div class="inp-wrap">
+            <label class="inp-label">Method</label>
+            <div class="sel-wrap">
+              <select class="inp sel" style="font-size:12px">
+                <option>Avg Liquidity</option>
+                <option>Uniform</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="divider" style="margin:10px 0"></div>
+
+        <!-- Min + Max price -->
+        <div class="pr-price-grid">
+          <div class="inp-wrap">
+            <label class="inp-label">Min Price <span class="dimmer" id="minPricePct">(-12.00%)</span></label>
+            <div class="num-inp">
+              <button class="num-btn" onclick="adjustPrice('min',-10)">−</button>
+              <input type="text" id="minPriceInp" value="1850.57" oninput="onPriceInput('min',this.value)">
+              <button class="num-btn" onclick="adjustPrice('min',10)">+</button>
+            </div>
+          </div>
+          <div class="inp-wrap">
+            <label class="inp-label">Max Price <span class="dimmer" id="maxPricePct">(+0.00%)</span></label>
+            <div class="num-inp">
+              <button class="num-btn" onclick="adjustPrice('max',-10)">−</button>
+              <input type="text" id="maxPriceInp" value="2102.92" oninput="onPriceInput('max',this.value)">
+              <button class="num-btn" onclick="adjustPrice('max',10)">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="range-track mt4" id="rangeTrack">
+          <div class="range-fill" id="rf"></div>
+          <div class="range-thumb" id="thumbMin" style="left:18%;transform:translate(-50%,-50%)"></div>
+          <div class="range-thumb" id="thumbMax" style="left:95%;transform:translate(-50%,-50%)"></div>
+        </div>
+        <div class="flex jb" style="font-size:10px;color:var(--text3);margin-top:4px">
+          <span id="rl-min">Min: 1,850</span><span id="rl-cur">Current: 2,093</span><span id="rl-max">Max: 2,103</span>
+        </div>
+      </div>
+
+      <!-- Deposit Amount -->
+      <div class="card">
+        <div class="card-title mb12">Deposit Amount</div>
+        <div class="inp-icon-wrap mb12">
+          <svg class="inp-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          <input class="inp" type="text" value="1000" id="depositAmt" oninput="updateDeposit(this.value)">
+        </div>
+        <div class="flex fc g8">
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;display:flex;align-items:center;justify-content:space-between">
+            <div class="flex aic g8">
+              <div class="tikon eth" style="width:20px;height:20px;font-size:9px">E</div>
+              <div><div class="bold" style="font-size:13px">WETH</div><div class="dim small" id="wethPct">0.0000 (0.00%)</div></div>
+            </div>
+            <div style="text-align:right"><div class="mono bold" id="wethAmt">$0.00</div></div>
+          </div>
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;display:flex;align-items:center;justify-content:space-between">
+            <div class="flex aic g8">
+              <div class="tikon usdc" style="width:20px;height:20px;font-size:9px">U</div>
+              <div><div class="bold" style="font-size:13px">USDC</div><div class="dim small" id="usdcPct">999.99 (100.00%)</div></div>
+            </div>
+            <div style="text-align:right"><div class="mono bold" id="usdcAmt">$1,000.00</div></div>
+          </div>
+        </div>
+        <button class="btn btn-cta btn-full mt12">Create Position</button>
+      </div>
+
+      <!-- Pool Stats (no correlation/geometric mean) -->
+      <div class="card">
+        <div class="card-title mb12">Pool Statistics</div>
+        <div class="stat"><span class="stat-l">Price Volatility (14d)</span><span class="stat-v">4.21%</span></div>
+        <div class="stat"><span class="stat-l">TVL</span><span class="stat-v">$62.70m</span></div>
+        <div class="stat"><span class="stat-l">Avg Daily Fees</span><span class="stat-v">$138.81k</span></div>
+        <div class="stat"><span class="stat-l">Daily Fees / TVL</span><span class="stat-v">0.2214%</span></div>
+        <div class="stat"><span class="stat-l">Avg Daily Volume</span><span class="stat-v">$46.27m</span></div>
+        <div class="stat"><span class="stat-l">Daily Volume / TVL</span><span class="stat-v">73.80%</span></div>
+      </div>
+
+    </div><!-- /LEFT -->
+
+    <!-- RIGHT PANEL -->
+    <div class="flex fc g16">
+
+      <!-- Liquidity Distribution — interactive canvas -->
+      <div class="card">
+        <div class="flex aic jb mb12">
+          <div>
+            <div class="card-title">Liquidity Distribution</div>
+            <div class="dim small mt4">1 WETH = 2,092.3 USDC</div>
+          </div>
+          <div class="flex aic g8"><span class="dim small">In Range:</span><span class="pill pill-c">42 ticks</span></div>
+        </div>
+        <div class="chart-container">
+          <div class="flex jb aic mb8">
+            <span class="dim small">Drag to pan · Scroll to zoom</span>
+            <div class="chart-controls">
+              <button class="chart-ctrl-btn" onclick="liqZoom(1.2)" title="Zoom in">+</button>
+              <button class="chart-ctrl-btn" onclick="liqZoom(0.8)" title="Zoom out">−</button>
+              <button class="chart-ctrl-btn" onclick="liqReset()" title="Reset">⟳</button>
+            </div>
+          </div>
+          <canvas id="liqChart" height="160" style="width:100%" class="chart-grab"></canvas>
+          <div class="chart-tooltip" id="liqTip"></div>
+        </div>
+      </div>
+
+      <!-- Price Chart — interactive canvas -->
+      <div class="card">
+        <div class="flex aic jb mb12">
+          <div class="card-title">WETH / USDC Price</div>
+          <div class="tabs">
+            <button class="tb on btn-sm" onclick="switchPriceChart(this,'7D')">7D</button>
+            <button class="tb btn-sm" onclick="switchPriceChart(this,'14D')">14D</button>
+            <button class="tb btn-sm" onclick="switchPriceChart(this,'30D')">30D</button>
+          </div>
+        </div>
+        <div class="g4c mb12" style="gap:8px">
+          <div><div class="dim small">MIN</div><div class="mono" style="font-size:12px" id="pMin">1,816.11</div></div>
+          <div><div class="dim small">PRICE</div><div class="mono accent" style="font-size:12px" id="pCurrent">2,006.72</div></div>
+          <div><div class="dim small">AVG</div><div class="mono" style="font-size:12px" id="pAvg">1,933.82</div></div>
+          <div><div class="dim small">MAX</div><div class="mono" style="font-size:12px" id="pMax">2,096.72</div></div>
+        </div>
+        <div class="chart-container">
+          <div class="flex jb aic mb8">
+            <span class="dim small">Drag to pan · Scroll to zoom</span>
+            <div class="chart-controls">
+              <button class="chart-ctrl-btn" onclick="priceZoom(1.2)">+</button>
+              <button class="chart-ctrl-btn" onclick="priceZoom(0.8)">−</button>
+              <button class="chart-ctrl-btn" onclick="priceReset()">⟳</button>
+            </div>
+          </div>
+          <canvas id="priceChart" height="150" style="width:100%" class="chart-grab"></canvas>
+          <div class="chart-tooltip" id="priceTip"></div>
+        </div>
+      </div>
+
+      <!-- Volume History — interactive canvas -->
+      <div class="card">
+        <div class="flex aic jb mb12">
+          <div class="card-title">Volume History</div>
+          <div class="flex aic g8">
+            <span class="dim small">Min: <span class="mono">$11.6m</span></span>
+            <span class="dim small">Avg: <span class="mono accent">$46.3m</span></span>
+            <span class="dim small">Max: <span class="mono">$90.8m</span></span>
+          </div>
+        </div>
+        <div class="chart-container">
+          <canvas id="volChart" height="160" style="width:100%"></canvas>
+          <div class="chart-tooltip" id="volTip"></div>
+        </div>
+      </div>
+
+      <!-- Position Breakdown (locked) -->
+      <div class="card relative">
+        <div class="flex aic jb mb12">
+          <div class="card-title">Position Breakdown</div>
+          <div class="seg" style="max-width:260px">
+            <button class="segb on">By Token</button>
+            <button class="segb">By Value</button>
+            <button class="segb">By Total</button>
+          </div>
+        </div>
+        <div style="height:200px;background:var(--bg3);border-radius:var(--r);filter:blur(3px)"></div>
+        <div class="locked-overlay">
+          <span style="font-size:18px">🔒</span>
+          <p class="lock-msg">Available for Pro users</p>
+          <button class="btn btn-accent btn-sm" onclick="show('pricing')">Subscribe →</button>
+        </div>
+      </div>
+
+    </div><!-- /RIGHT -->
+  </div>
+
+</div>
+<footer><span>© 2025 Pool Atlas</span><div style="display:flex;gap:18px"><a href="#">Terms</a><a href="#">Privacy</a></div></footer>
+</section>
+
+
+<!-- ═══════════ SCREEN: PRICING ═══════════ -->
+<section id="screen-pricing" class="screen">
+<div class="wrap" style="text-align:center">
+
+  <div style="max-width:520px;margin:0 auto 44px">
+    <div class="pill pill-c mb16" style="display:inline-flex">Flexible Plans</div>
+    <h1 style="font-family:var(--fhead);font-weight:800;font-size:34px;letter-spacing:-.02em;margin-bottom:12px">Simple, honest pricing</h1>
+    <p class="dim" style="font-size:15px">Start free, upgrade when you need more. No tricks, no lock-ins.</p>
+    <div style="display:inline-flex;background:var(--bg3);border:1px solid var(--border);padding:3px;border-radius:var(--r);margin-top:18px">
+      <button class="tb on" style="padding:6px 20px" id="billMonth" onclick="setBilling('monthly')">Monthly</button>
+      <button class="tb" style="padding:6px 20px" id="billYear" onclick="setBilling('annual')">Annual <span class="green small">−20%</span></button>
+    </div>
+  </div>
+
+  <div class="price-grid">
+    <!-- Free -->
+    <div class="price-card">
+      <div class="price-name">Free</div>
+      <div class="price-amount"><sup>$</sup>0</div>
+      <div class="price-period">forever</div>
+      <p class="dim" style="font-size:13px">Explore top pools and run basic simulations.</p>
+      <button class="btn btn-ghost btn-full mt12">Get started</button>
+      <ul class="price-feats">
+        <li>Discover top pools</li>
+        <li>Basic simulation</li>
+        <li>Price range modeling</li>
+        <li>Volume history (7 days)</li>
+        <li class="no">Price volatility data</li>
+        <li class="no">Position breakdown</li>
+        <li class="no">Recently viewed pools</li>
+        <li class="no">Portfolio tracking</li>
+      </ul>
+    </div>
+    <!-- Pro -->
+    <div class="price-card feat-p">
+      <div class="price-badge">Most Popular</div>
+      <div class="price-name accent">Pro</div>
+      <div class="price-amount" id="proPrice"><sup>$</sup>29</div>
+      <div class="price-period" id="proPeriod">per month · billed monthly</div>
+      <p class="dim" style="font-size:13px">Full access for serious liquidity providers.</p>
+      <button class="btn btn-cta btn-full mt12">Start 7-day free trial</button>
+      <ul class="price-feats">
+        <li>Everything in Free</li>
+        <li>Price volatility data</li>
+        <li>Position breakdown charts</li>
+        <li>Recently viewed pools</li>
+        <li>Extended history (90d)</li>
+        <li>Portfolio tracking</li>
+        <li>CSV export</li>
+        <li>Priority support</li>
+      </ul>
+    </div>
+    <!-- Team -->
+    <div class="price-card">
+      <div class="price-name">Team</div>
+      <div class="price-amount" id="teamPrice"><sup>$</sup>79</div>
+      <div class="price-period" id="teamPeriod">per month · up to 5 seats</div>
+      <p class="dim" style="font-size:13px">For funds and research teams.</p>
+      <button class="btn btn-outline btn-full mt12">Contact sales</button>
+      <ul class="price-feats">
+        <li>Everything in Pro</li>
+        <li>5 team seats</li>
+        <li>API access</li>
+        <li>Custom alerts & webhooks</li>
+        <li>Dedicated onboarding</li>
+        <li>SLA support</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- FAQ -->
+  <div style="max-width:580px;margin:52px auto 0;text-align:left">
+    <h2 style="font-family:var(--fhead);font-weight:700;font-size:18px;margin-bottom:18px;text-align:center">FAQ</h2>
+    <div class="flex fc g8">
+      <div class="card card-sm"><div class="bold mb4" style="font-size:13px">Can I cancel anytime?</div><div class="dim" style="font-size:13px">Yes. Cancel from settings. Access stays until end of billing period.</div></div>
+      <div class="card card-sm"><div class="bold mb4" style="font-size:13px">Which DEXs are supported?</div><div class="dim" style="font-size:13px">Uniswap V3, PancakeSwap V3, SushiSwap V3, QuickSwap, Thena, and more coming.</div></div>
+      <div class="card card-sm"><div class="bold mb4" style="font-size:13px">Is there a free trial for Pro?</div><div class="dim" style="font-size:13px">Yes — 7 days free, no credit card needed.</div></div>
+    </div>
+  </div>
+
+</div>
+<footer style="margin-top:52px"><span>© 2025 Pool Atlas</span><div style="display:flex;gap:18px"><a href="#">Terms</a><a href="#">Privacy</a></div></footer>
+</section>
+
+
+<!-- ═══════════════════ JS ═══════════════════ -->
+<script>
+/* ── SCREEN SWITCHING ── */
+function show(s){
+  document.querySelectorAll('.screen').forEach(x=>x.classList.remove('on'))
+  document.querySelectorAll('.swb').forEach(x=>x.classList.remove('active'))
+  document.querySelectorAll('.nl').forEach(x=>x.classList.remove('active'))
+  document.getElementById('screen-'+s).classList.add('on')
+  const map={home:'①',discover:'②',search:'③',simulate:'④',pricing:'⑤'}
+  document.querySelectorAll('.swb').forEach(b=>{if(b.textContent.includes(map[s]))b.classList.add('active')})
+  const nmap={home:'Home',discover:'Discover',search:'Simulate',simulate:'Simulate',pricing:'Pricing'}
+  document.querySelectorAll('.nl').forEach(l=>{if(l.textContent.trim()===nmap[s])l.classList.add('active')})
+  window.scrollTo(0,0)
+  if(s==='simulate'){setTimeout(initCharts,80)}
+}
+
+/* ── POOL DATA ── */
+const POOLS = [
+  {name:'WETH/USDC', dex:'Uni V3', net:'Ethereum', t0:'eth', t1:'usdc', fee:'0.05%', apr:236.82, vol:4.21, tvl:82.93e6, corr:0.87, fees:143980, feespc:0.1736, vol2:287.97e6, volpc:347.23},
+  {name:'USDT/WETH', dex:'Uni V3', net:'Ethereum', t0:'usdt', t1:'eth', fee:'0.30%', apr:428.44, vol:3.88, tvl:60.24e6, corr:0.92, fees:89700, feespc:0.1489, vol2:29.90e6, volpc:49.63},
+  {name:'WETH/WBTC', dex:'Uni V3', net:'Ethereum', t0:'eth', t1:'btc', fee:'0.30%', apr:134.79, vol:2.10, tvl:45.39e6, corr:0.96, fees:10450, feespc:0.0230, vol2:3.48e6, volpc:7.67},
+  {name:'WETH/WBTC', dex:'Uni V3', net:'Ethereum', t0:'eth', t1:'btc', fee:'0.05%', apr:85.40, vol:2.09, tvl:45.25e6, corr:0.95, fees:20200, feespc:0.0446, vol2:40.40e6, volpc:89.29},
+  {name:'USDC/USDT', dex:'Uni V3', net:'Ethereum', t0:'usdc', t1:'usdt', fee:'0.01%', apr:30.28, vol:0.04, tvl:25.36e6, corr:1.00, fees:136, feespc:0.0005, vol2:1.36e6, volpc:5.35},
+  {name:'USDC/WBTC', dex:'Uni V3', net:'Ethereum', t0:'usdc', t1:'btc', fee:'0.30%', apr:267.21, vol:3.77, tvl:24.67e6, corr:0.78, fees:10330, feespc:0.0419, vol2:3.44e6, volpc:13.95},
+  {name:'USDT/WBTC', dex:'Uni V3', net:'Ethereum', t0:'usdt', t1:'btc', fee:'0.30%', apr:276.96, vol:3.80, tvl:24.29e6, corr:0.81, fees:9020, feespc:0.0371, vol2:3.01e6, volpc:12.38},
+  {name:'USDT/USDC', dex:'Uni V3', net:'Ethereum', t0:'usdt', t1:'usdc', fee:'0.01%', apr:8.28, vol:0.03, tvl:22.73e6, corr:1.00, fees:2330, feespc:0.0102, vol2:23.27e6, volpc:102.37},
+  {name:'ARB/USDC', dex:'Uni V3', net:'Arbitrum', t0:'arb', t1:'usdc', fee:'0.05%', apr:198.40, vol:6.22, tvl:18.50e6, corr:0.71, fees:32100, feespc:0.1735, vol2:64.20e6, volpc:347.0},
+  {name:'ARB/WETH', dex:'Uni V3', net:'Arbitrum', t0:'arb', t1:'eth', fee:'0.30%', apr:312.10, vol:7.44, tvl:12.80e6, corr:0.68, fees:21800, feespc:0.1703, vol2:43.50e6, volpc:339.8},
+]
+
+let sortKey = 'apr', sortDir = -1, filterStr = '', filterEx = '', filterNet = ''
+
+function fmt$(v){
+  if(v>=1e9)return '$'+(v/1e9).toFixed(2)+'b'
+  if(v>=1e6)return '$'+(v/1e6).toFixed(2)+'m'
+  if(v>=1e3)return '$'+(v/1e3).toFixed(2)+'k'
+  return '$'+v.toFixed(2)
+}
+function fmtPct(v){return v.toFixed(2)+'%'}
+
+const keyMap={apr:'apr',vol:'vol',tvl:'tvl',corr:'corr',fees:'fees',feespc:'feespc',vol2:'vol2',volpc:'volpc'}
+
+function renderTable(){
+  let data=[...POOLS]
+  if(filterStr){const q=filterStr.toLowerCase();data=data.filter(p=>p.name.toLowerCase().includes(q)||p.dex.toLowerCase().includes(q)||p.net.toLowerCase().includes(q))}
+  if(filterEx&&filterEx!=='All Exchanges'){data=data.filter(p=>filterEx.includes(p.dex))}
+  if(filterNet&&filterNet!=='All Networks'){data=data.filter(p=>p.net===filterNet)}
+  data.sort((a,b)=>sortDir*(b[keyMap[sortKey]]-a[keyMap[sortKey]]))
+  document.getElementById('poolCount').textContent=data.length+' pools'
+  const icons=(t0,t1)=>`<div class="tikons"><div class="tikon ${t0}">${t0[0].toUpperCase()}</div><div class="tikon ${t1}">${t1[0].toUpperCase()}</div></div>`
+  const rows=data.map((p,i)=>`
+    <tr onclick="show('simulate')">
+      <td><span style="color:var(--text3);cursor:pointer">☆</span></td>
+      <td><div class="pool-cell">${icons(p.t0,p.t1)}<div><div class="bold">${p.name}</div><div class="flex g4 mt4"><span class="tag">${p.dex}</span><span class="tag">${p.net}</span><span class="pill pill-n">${p.fee}</span></div></div></div></td>
+      <td><span class="apr-v">${fmtPct(p.apr)}</span></td>
+      <td><span class="dim mono">${fmtPct(p.vol)}</span></td>
+      <td><span class="tvl-v">${fmt$(p.tvl)}</span></td>
+      <td class="col-corr"><span class="dim mono">${p.corr.toFixed(2)}</span></td>
+      <td class="col-fees"><span class="mono">${fmt$(p.fees)}</span></td>
+      <td class="col-feespc"><span class="dim">${fmtPct(p.feespc)}</span></td>
+      <td class="col-vol2"><span class="vol-v">${fmt$(p.vol2)}</span></td>
+      <td class="col-vol"><span class="dim mono">${p.volpc.toFixed(2)}</span></td>
+      <td><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();show('simulate')">Simulate →</button></td>
+    </tr>`).join('')
+  document.getElementById('poolTable').innerHTML=rows
+}
+
+function filterTable(){
+  filterStr=document.getElementById('searchInp').value
+  filterEx=document.getElementById('exFilter').value
+  filterNet=document.getElementById('netFilter').value
+  renderTable()
+}
+function resetFilters(){
+  document.getElementById('searchInp').value=''
+  document.getElementById('exFilter').value='All Exchanges'
+  document.getElementById('netFilter').value='All Networks'
+  filterStr=filterEx=filterNet=''
+  renderTable()
+}
+
+function sortTable(key){
+  if(sortKey===key){sortDir*=-1}else{sortKey=key;sortDir=-1}
+  document.querySelectorAll('thead th').forEach(th=>{
+    th.classList.remove('sort-on')
+    th.querySelector('.sarr').textContent='↕'
+  })
+  const th=document.getElementById('th-'+key)||document.getElementById('th-'+key+'pc')
+  if(th){th.classList.add('sort-on');th.querySelector('.sarr').textContent=sortDir===-1?'▼':'▲'}
+  renderTable()
+}
+
+/* ── DISCOVER TABS ── */
+const tabConfig={
+  overview:{sortKey:'apr',sortDir:-1,hint:'Average APR (desc)'},
+  fees:    {sortKey:'fees',sortDir:-1,hint:'Avg Daily Fees (desc)'},
+  liquidity:{sortKey:'tvl',sortDir:-1,hint:'TVL (desc)'},
+}
+function discoverTab(btn, tab){
+  document.querySelectorAll('#discoverTabs .tb').forEach(b=>b.classList.remove('on'))
+  btn.classList.add('on')
+  const cfg=tabConfig[tab]
+  sortKey=cfg.sortKey; sortDir=cfg.sortDir
+  document.getElementById('tabHintTxt').textContent=cfg.hint
+  // update sort header UI
+  document.querySelectorAll('thead th').forEach(th=>{
+    th.classList.remove('sort-on')
+    const s=th.querySelector('.sarr')
+    if(s)s.textContent='↕'
+  })
+  const thEl=document.getElementById('th-'+cfg.sortKey)
+  if(thEl){thEl.classList.add('sort-on');thEl.querySelector('.sarr').textContent='▼'}
+  renderTable()
+}
+
+/* ── COLUMN TOGGLE ── */
+let visibleCols={vol:true,fees:true,feespc:true,corr:true,vol2:true}
+function toggleColDrop(){
+  document.getElementById('colDropdown').classList.toggle('open')
+}
+document.addEventListener('click',e=>{
+  if(!e.target.closest('.col-wrap'))document.getElementById('colDropdown').classList.remove('open')
+})
+function toggleCol(cls, label){
+  visibleCols[cls]=!visibleCols[cls]
+  const chk=document.getElementById('chk-'+cls)
+  chk.classList.toggle('on')
+  chk.textContent=visibleCols[cls]?'✓':''
+  document.querySelectorAll('.'+cls).forEach(el=>el.style.display=visibleCols[cls]?'':'none')
+  const cnt=Object.values(visibleCols).filter(Boolean).length+3 // +3 for always-visible
+  document.getElementById('colCount').textContent=cnt
+}
+
+/* ── DAYS INPUT ── */
+function adjustDays(d){
+  const inp=document.getElementById('daysInput')
+  inp.value=Math.max(1,Math.min(90,parseInt(inp.value||7)+d))
+}
+
+/* ── TOKEN COMBO ── */
+const TOKEN_LIST=[
+  {sym:'WETH', name:'Wrapped Ether', cls:'eth', ltr:'E'},
+  {sym:'USDC', name:'USD Coin', cls:'usdc', ltr:'U'},
+  {sym:'USDT', name:'Tether USD', cls:'usdt', ltr:'T'},
+  {sym:'WBTC', name:'Wrapped Bitcoin', cls:'btc', ltr:'B'},
+  {sym:'ARB',  name:'Arbitrum', cls:'arb', ltr:'A'},
+  {sym:'OP',   name:'Optimism', cls:'arb', ltr:'O'},
+  {sym:'LINK', name:'Chainlink', cls:'eth', ltr:'L'},
+  {sym:'UNI',  name:'Uniswap', cls:'usdc', ltr:'U'},
+  {sym:'MATIC',name:'Polygon', cls:'arb', ltr:'M'},
+  {sym:'DAI',  name:'Dai Stablecoin', cls:'usdt', ltr:'D'},
+]
+let comboSelected={comboA:{sym:'WETH',cls:'eth',ltr:'E'},comboB:{sym:'USDC',cls:'usdc',ltr:'U'}}
+
+function renderComboList(id, filter=''){
+  const listEl=document.getElementById(id==='comboA'?'listA':'listB')
+  const sel=comboSelected[id]
+  const filtered=TOKEN_LIST.filter(t=>!filter||t.sym.toLowerCase().includes(filter.toLowerCase())||t.name.toLowerCase().includes(filter.toLowerCase()))
+  listEl.innerHTML=filtered.map(t=>`
+    <div class="token-combo-opt${t.sym===sel.sym?' selected':''}" onclick="selectToken('${id}','${t.sym}','${t.cls}','${t.ltr}')">
+      <span class="tikon ${t.cls}" style="width:20px;height:20px;font-size:9px;margin:0;flex-shrink:0">${t.ltr}</span>
+      <span class="token-combo-opt-sym">${t.sym}</span>
+      <span class="token-combo-opt-name">${t.name}</span>
+    </div>`).join('')
+}
+
+function toggleCombo(id){
+  const el=document.getElementById(id)
+  const wasOpen=el.classList.contains('open')
+  document.querySelectorAll('.token-combo').forEach(c=>c.classList.remove('open'))
+  if(!wasOpen){
+    el.classList.add('open')
+    renderComboList(id)
+    const inp=el.querySelector('.token-combo-search')
+    if(inp){inp.value='';inp.focus()}
+  }
+}
+function filterCombo(id,q){renderComboList(id,q)}
+function selectToken(id,sym,cls,ltr){
+  comboSelected[id]={sym,cls,ltr}
+  const isA=id==='comboA'
+  document.getElementById(isA?'valA':'valB').textContent=sym
+  const iconEl=document.getElementById(isA?'iconA':'iconB')
+  iconEl.innerHTML=`<span class="tikon ${cls}" style="width:18px;height:18px;font-size:8px;margin:0">${ltr}</span>`
+  document.getElementById(id).classList.remove('open')
+  const a=comboSelected.comboA.sym, b=comboSelected.comboB.sym
+  document.getElementById('poolFoundMsg').textContent=`3 pools found for ${a} / ${b} →`
+}
+document.addEventListener('click',e=>{
+  if(!e.target.closest('.token-combo'))
+    document.querySelectorAll('.token-combo').forEach(c=>c.classList.remove('open'))
+})
+
+/* ── INVERT TOKENS ── */
+let invertedTokens=false
+function invertTokens(){
+  invertedTokens=!invertedTokens
+  const nameEl=document.getElementById('pdhName')
+  const prLabel=document.querySelector('[id="screen-simulate"] .dim.small')
+  if(invertedTokens){
+    nameEl.textContent='USDC / WETH'
+    document.querySelectorAll('[id="screen-simulate"] .dim.small').forEach(el=>{
+      if(el.textContent.includes('USDC per WETH'))el.textContent='WETH per USDC'
+    })
+    // swap tikon order in header
+    const tikons=document.querySelector('.pdh .tikons')
+    if(tikons){
+      const [t0,t1]=[...tikons.children]
+      tikons.appendChild(t0)
+    }
+  } else {
+    nameEl.textContent='WETH / USDC'
+    document.querySelectorAll('[id="screen-simulate"] .dim.small').forEach(el=>{
+      if(el.textContent.includes('WETH per USDC'))el.textContent='USDC per WETH'
+    })
+    const tikons=document.querySelector('.pdh .tikons')
+    if(tikons){
+      const [t0,t1]=[...tikons.children]
+      tikons.appendChild(t0)
+    }
+  }
+}
+
+/* ── INTERACTIVE PRICE RANGE ── */
+const PRICE_CURRENT=2092.3, PRICE_FLOOR=1600, PRICE_CEIL=2600
+let priceMin=1850.57, priceMax=2102.92
+
+function pctFromPrice(p){return Math.max(0,Math.min(100,(p-PRICE_FLOOR)/(PRICE_CEIL-PRICE_FLOOR)*100))}
+function priceFromPct(pct){return PRICE_FLOOR+pct/100*(PRICE_CEIL-PRICE_FLOOR)}
+
+function updateRangeUI(){
+  const minPct=pctFromPrice(priceMin)
+  const maxPct=pctFromPrice(priceMax)
+  document.getElementById('thumbMin').style.left=minPct+'%'
+  document.getElementById('thumbMax').style.left=maxPct+'%'
+  const rf=document.getElementById('rf')
+  rf.style.left=minPct+'%'
+  rf.style.right=(100-maxPct)+'%'
+  document.getElementById('minPriceInp').value=priceMin.toFixed(2)
+  document.getElementById('maxPriceInp').value=priceMax.toFixed(2)
+  const minDelta=((priceMin/PRICE_CURRENT-1)*100)
+  const maxDelta=((priceMax/PRICE_CURRENT-1)*100)
+  document.getElementById('minPricePct').textContent='('+( minDelta>=0?'+':'')+minDelta.toFixed(2)+'%)'
+  document.getElementById('maxPricePct').textContent='('+( maxDelta>=0?'+':'')+maxDelta.toFixed(2)+'%)'
+  document.getElementById('rl-min').textContent='Min: '+priceMin.toFixed(0)
+  document.getElementById('rl-max').textContent='Max: '+priceMax.toFixed(0)
+}
+
+function adjustPrice(which, delta){
+  if(which==='min'){priceMin=Math.max(PRICE_FLOOR,Math.min(priceMax-10,priceMin+delta))}
+  else{priceMax=Math.max(priceMin+10,Math.min(PRICE_CEIL,priceMax+delta))}
+  updateRangeUI()
+}
+function onPriceInput(which,val){
+  const v=parseFloat(val)
+  if(!isNaN(v)){
+    if(which==='min')priceMin=Math.max(PRICE_FLOOR,Math.min(priceMax-10,v))
+    else priceMax=Math.max(priceMin+10,Math.min(PRICE_CEIL,v))
+    updateRangeUI()
+  }
+}
+
+function initRangeSlider(){
+  const track=document.getElementById('rangeTrack')
+  const thumbMin=document.getElementById('thumbMin')
+  const thumbMax=document.getElementById('thumbMax')
+  if(!track||!thumbMin||!thumbMax)return
+  updateRangeUI()
+
+  function startDrag(e,which){
+    e.preventDefault()
+    const rect=track.getBoundingClientRect()
+    function onMove(ev){
+      const clientX=ev.touches?ev.touches[0].clientX:ev.clientX
+      const pct=Math.max(0,Math.min(100,(clientX-rect.left)/rect.width*100))
+      const price=priceFromPct(pct)
+      if(which==='min'){priceMin=Math.max(PRICE_FLOOR,Math.min(priceMax-10,price))}
+      else{priceMax=Math.max(priceMin+10,Math.min(PRICE_CEIL,price))}
+      updateRangeUI()
+    }
+    function onUp(){
+      document.removeEventListener('mousemove',onMove)
+      document.removeEventListener('mouseup',onUp)
+      document.removeEventListener('touchmove',onMove)
+      document.removeEventListener('touchend',onUp)
+    }
+    document.addEventListener('mousemove',onMove)
+    document.addEventListener('mouseup',onUp)
+    document.addEventListener('touchmove',onMove)
+    document.addEventListener('touchend',onUp)
+  }
+  thumbMin.addEventListener('mousedown',e=>startDrag(e,'min'))
+  thumbMax.addEventListener('mousedown',e=>startDrag(e,'max'))
+  thumbMin.addEventListener('touchstart',e=>startDrag(e,'min'))
+  thumbMax.addEventListener('touchstart',e=>startDrag(e,'max'))
+  // click on track
+  track.addEventListener('click',e=>{
+    const rect=track.getBoundingClientRect()
+    const pct=(e.clientX-rect.left)/rect.width*100
+    const price=priceFromPct(pct)
+    const dMin=Math.abs(price-priceMin), dMax=Math.abs(price-priceMax)
+    if(dMin<dMax)priceMin=Math.max(PRICE_FLOOR,Math.min(priceMax-10,price))
+    else priceMax=Math.max(priceMin+10,Math.min(PRICE_CEIL,price))
+    updateRangeUI()
+  })
+}
+
+
+/* ── DEPOSIT CALCULATOR ── */
+function updateDeposit(val){
+  const v=parseFloat(val)||0
+  document.getElementById('usdcAmt').textContent='$'+v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})
+  document.getElementById('usdcPct').textContent=(v).toFixed(4)+' (100.00%)'
+}
+
+/* ── BILLING TOGGLE ── */
+function setBilling(type){
+  const m=type==='monthly'
+  document.getElementById('billMonth').classList.toggle('on',m)
+  document.getElementById('billYear').classList.toggle('on',!m)
+  document.getElementById('proPrice').innerHTML=m?'<sup>$</sup>29':'<sup>$</sup>23'
+  document.getElementById('proPeriod').textContent=m?'per month · billed monthly':'per month · billed annually'
+  document.getElementById('teamPrice').innerHTML=m?'<sup>$</sup>79':'<sup>$</sup>63'
+  document.getElementById('teamPeriod').textContent=m?'per month · up to 5 seats':'per month · billed annually'
+}
+
+/* ── SEG BUTTONS ── */
+document.addEventListener('click',e=>{
+  const b=e.target.closest('.segb')
+  if(!b)return
+  b.closest('.seg').querySelectorAll('.segb').forEach(x=>x.classList.remove('on'))
+  b.classList.add('on')
+})
+
+/* ── CHART HELPERS ── */
+function getCanvasCtx(id){
+  const canvas=document.getElementById(id)
+  if(!canvas)return null
+  const dpr=window.devicePixelRatio||1
+  const rect=canvas.parentElement.getBoundingClientRect()
+  canvas.width=rect.width*dpr
+  canvas.style.width=rect.width+'px'
+  canvas.height=parseInt(canvas.getAttribute('height'))*dpr
+  canvas.style.height=canvas.getAttribute('height')+'px'
+  const ctx=canvas.getContext('2d')
+  ctx.scale(dpr,dpr)
+  ctx._w=rect.width
+  ctx._h=parseInt(canvas.getAttribute('height'))
+  ctx._dpr=dpr
+  return ctx
+}
+
+/* ── LIQUIDITY DISTRIBUTION CHART ── */
+function initLiqChart(){
+  const ctx=getCanvasCtx('liqChart')
+  if(!ctx)return
+  const W=ctx._w, H=ctx._h
+  const bars=[]
+  // generate mock bars
+  for(let i=0;i<52;i++){
+    const x=i/52
+    // bimodal-ish peak around current price (i=28)
+    const liq=Math.max(0,100*Math.exp(-0.5*Math.pow((i-28)/4,2))+40*Math.exp(-0.5*Math.pow((i-20)/8,2))+10*Math.random())
+    const inRange=i>=16&&i<=44
+    bars.push({x,liq,inRange})
+  }
+  const maxLiq=Math.max(...bars.map(b=>b.liq))
+  const barW=(W-20)/bars.length*0.7
+  const barGap=(W-20)/bars.length
+
+  function draw(hovIdx){
+    ctx.clearRect(0,0,W,H)
+    bars.forEach((b,i)=>{
+      const bx=10+i*barGap
+      const bh=(b.liq/maxLiq)*(H-24)
+      const by=H-4-bh
+      const hov=hovIdx===i
+      if(b.inRange){
+        ctx.fillStyle=hov?'rgba(0,212,255,0.9)':'rgba(0,212,255,0.5)'
+      } else {
+        ctx.fillStyle=hov?'rgba(122,156,191,0.5)':'rgba(61,90,120,0.35)'
+      }
+      ctx.beginPath()
+      ctx.roundRect(bx-barW/2,by,barW,bh,2)
+      ctx.fill()
+    })
+    // current price line (bar 28)
+    const cpx=10+28*barGap
+    ctx.strokeStyle='var(--accent)'
+    ctx.lineWidth=1.5
+    ctx.setLineDash([3,3])
+    ctx.beginPath();ctx.moveTo(cpx,0);ctx.lineTo(cpx,H-4);ctx.stroke()
+    ctx.setLineDash([])
+    ctx.fillStyle='rgba(0,212,255,0.9)';ctx.font='10px IBM Plex Mono'
+    ctx.fillText('Current',cpx+4,12)
+    // range boundaries (bars 16, 44)
+    const lbx=10+16*barGap, rbx=10+44*barGap
+    ctx.strokeStyle='rgba(0,212,255,0.35)';ctx.lineWidth=1
+    ctx.setLineDash([4,3])
+    ctx.beginPath();ctx.moveTo(lbx,0);ctx.lineTo(lbx,H-4);ctx.stroke()
+    ctx.beginPath();ctx.moveTo(rbx,0);ctx.lineTo(rbx,H-4);ctx.stroke()
+    ctx.setLineDash([])
+  }
+
+  draw(-1)
+  const canvas=document.getElementById('liqChart')
+  const tip=document.getElementById('liqTip')
+  canvas.addEventListener('mousemove',e=>{
+    const rect=canvas.getBoundingClientRect()
+    const mx=e.clientX-rect.left
+    const idx=Math.round((mx-10)/((W-20)/bars.length))
+    if(idx>=0&&idx<bars.length){
+      draw(idx)
+      const b=bars[idx]
+      const price=1816+idx*(2096-1816)/52
+      tip.innerHTML=`<div class="chart-tooltip-label">Price</div>${price.toFixed(0)} USDC<br><div class="chart-tooltip-label" style="margin-top:4px">Liquidity</div>${(b.liq/maxLiq*100).toFixed(1)}%`
+      tip.style.display='block'
+      tip.style.left=Math.min(mx+10,W-130)+'px'
+      tip.style.top='20px'
+    }
+  })
+  canvas.addEventListener('mouseleave',()=>{draw(-1);tip.style.display='none'})
+}
+
+/* ── PRICE CHART ── */
+const priceData7D=[1880,1870,1855,1910,1960,1940,1975,2010,1990,2030,2050,2040,2080,2092]
+const priceData14D=[1780,1820,1810,1850,1870,1840,1890,1920,1900,1950,1980,1960,2010,2040,2030,2070,2050,2090,2080,2092]
+const priceData30D=Array.from({length:30},(_,i)=>1700+i*13+Math.sin(i*0.8)*50+Math.random()*30)
+
+let currentPriceSet=priceData7D
+function switchPriceChart(btn,label){
+  document.querySelectorAll('#screen-simulate .card .tabs .tb').forEach(b=>b.classList.remove('on'))
+  btn.classList.add('on')
+  if(label==='7D')currentPriceSet=priceData7D
+  else if(label==='14D')currentPriceSet=priceData14D
+  else currentPriceSet=priceData30D
+  priceViewStart=0;priceViewEnd=currentPriceSet.length
+  drawPriceChart(currentPriceSet)
+  updatePriceStats()
+}
+
+let priceViewStart=0, priceViewEnd=14, priceDragStart=null, priceDragStartView=null
+
+function drawPriceChart(data, hovIdx=-1, vStart=priceViewStart, vEnd=priceViewEnd){
+  const ctx=getCanvasCtx('priceChart')
+  if(!ctx)return
+  const W=ctx._w, H=ctx._h, pad=24, padL=44
+  const slice=data.slice(Math.floor(vStart),Math.ceil(vEnd))
+  if(slice.length<2)return
+  const mn=Math.min(...slice)*0.997, mx=Math.max(...slice)*1.003
+  const pts=slice.map((v,i)=>({x:padL+(W-padL-pad)*i/(slice.length-1),y:H-pad-(v-mn)/(mx-mn)*(H-pad*2)}))
+  ctx.clearRect(0,0,W,H)
+
+  // y gridlines
+  const yTicks=4
+  ctx.font='9px IBM Plex Mono';ctx.textAlign='right'
+  for(let i=0;i<=yTicks;i++){
+    const yPct=i/yTicks
+    const y=pad+(H-pad*2)*(1-yPct)
+    const val=(mn+(mx-mn)*yPct).toFixed(0)
+    ctx.fillStyle='rgba(61,90,120,0.7)';ctx.fillText(val,padL-5,y+3)
+    ctx.strokeStyle='rgba(61,90,120,0.1)';ctx.lineWidth=1;ctx.setLineDash([3,3])
+    ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(W-pad,y);ctx.stroke()
+  }
+  ctx.setLineDash([])
+
+  // range band
+  const rMinY=H-pad-(priceMin-mn)/(mx-mn)*(H-pad*2)
+  const rMaxY=H-pad-(priceMax-mn)/(mx-mn)*(H-pad*2)
+  if(rMaxY<rMinY&&rMinY>pad&&rMaxY<H-pad){
+    ctx.fillStyle='rgba(0,212,255,0.05)'
+    ctx.fillRect(padL,Math.max(pad,rMaxY),W-padL-pad,Math.min(H-pad,rMinY)-Math.max(pad,rMaxY))
+    ctx.strokeStyle='rgba(0,212,255,0.2)';ctx.lineWidth=1;ctx.setLineDash([5,4])
+    if(rMaxY>=pad&&rMaxY<=H-pad){ctx.beginPath();ctx.moveTo(padL,rMaxY);ctx.lineTo(W-pad,rMaxY);ctx.stroke()}
+    if(rMinY>=pad&&rMinY<=H-pad){ctx.beginPath();ctx.moveTo(padL,rMinY);ctx.lineTo(W-pad,rMinY);ctx.stroke()}
+    ctx.setLineDash([])
+  }
+
+  // gradient fill under line
+  const grad=ctx.createLinearGradient(0,0,0,H)
+  grad.addColorStop(0,'rgba(0,212,255,0.2)');grad.addColorStop(1,'rgba(0,212,255,0)')
+  ctx.beginPath();ctx.moveTo(pts[0].x,pts[0].y)
+  pts.slice(1).forEach(p=>ctx.lineTo(p.x,p.y))
+  ctx.lineTo(pts.at(-1).x,H-pad);ctx.lineTo(pts[0].x,H-pad);ctx.closePath()
+  ctx.fillStyle=grad;ctx.fill()
+
+  // line
+  ctx.beginPath();ctx.moveTo(pts[0].x,pts[0].y)
+  pts.slice(1).forEach(p=>ctx.lineTo(p.x,p.y))
+  ctx.strokeStyle='rgba(0,212,255,0.9)';ctx.lineWidth=2;ctx.setLineDash([]);ctx.stroke()
+
+  // x labels
+  ctx.fillStyle='rgba(61,90,120,0.8)';ctx.font='9px IBM Plex Mono';ctx.textAlign='center'
+  const step=Math.max(1,Math.floor(slice.length/6))
+  slice.forEach((_,i)=>{if(i%step===0||i===slice.length-1)ctx.fillText(Math.floor(vStart)+i+1,pts[i].x,H-4)})
+
+  // hover crosshair
+  if(hovIdx>=0&&hovIdx<pts.length){
+    const p=pts[hovIdx]
+    ctx.strokeStyle='rgba(0,212,255,0.4)';ctx.lineWidth=1;ctx.setLineDash([3,3])
+    ctx.beginPath();ctx.moveTo(p.x,pad);ctx.lineTo(p.x,H-pad);ctx.stroke();ctx.setLineDash([])
+    ctx.beginPath();ctx.arc(p.x,p.y,5,0,Math.PI*2)
+    ctx.fillStyle='var(--accent)';ctx.strokeStyle='var(--bg2)';ctx.lineWidth=2;ctx.fill();ctx.stroke()
+  }
+}
+
+function priceZoom(factor){
+  const span=(priceViewEnd-priceViewStart)*factor
+  const center=(priceViewStart+priceViewEnd)/2
+  priceViewStart=Math.max(0,center-span/2)
+  priceViewEnd=Math.min(currentPriceSet.length,center+span/2)
+  drawPriceChart(currentPriceSet)
+  updatePriceStats()
+}
+function priceReset(){
+  priceViewStart=0;priceViewEnd=currentPriceSet.length
+  drawPriceChart(currentPriceSet);updatePriceStats()
+}
+function updatePriceStats(){
+  const slice=currentPriceSet.slice(Math.floor(priceViewStart),Math.ceil(priceViewEnd))
+  const mn=Math.min(...slice),mx=Math.max(...slice),avg=slice.reduce((a,b)=>a+b,0)/slice.length
+  document.getElementById('pMin').textContent=mn.toFixed(2)
+  document.getElementById('pMax').textContent=mx.toFixed(2)
+  document.getElementById('pAvg').textContent=avg.toFixed(2)
+  document.getElementById('pCurrent').textContent=currentPriceSet.at(-1).toFixed(2)
+}
+
+const priceTipEl=()=>document.getElementById('priceTip')
+function bindPriceHover(){
+  const canvas=document.getElementById('priceChart')
+  if(!canvas)return
+  canvas.addEventListener('mousemove',e=>{
+    if(priceDragStart!==null){
+      const rect=canvas.getBoundingClientRect()
+      const padL=44,padR=24
+      const dx=(e.clientX-priceDragStart)/(rect.width-padL-padR)*(priceViewEnd-priceViewStart)
+      const span=priceDragStartView[1]-priceDragStartView[0]
+      let ns=priceDragStartView[0]-dx,ne=priceDragStartView[1]-dx
+      if(ns<0){ns=0;ne=span}
+      if(ne>currentPriceSet.length){ne=currentPriceSet.length;ns=ne-span}
+      priceViewStart=ns;priceViewEnd=ne
+      drawPriceChart(currentPriceSet);updatePriceStats()
+      priceTipEl().style.display='none';return
+    }
+    const rect=canvas.getBoundingClientRect()
+    const mx=e.clientX-rect.left
+    const padL=44,padR=24,cW=rect.width-padL-padR
+    const slice=currentPriceSet.slice(Math.floor(priceViewStart),Math.ceil(priceViewEnd))
+    const idx=Math.round((mx-padL)/cW*(slice.length-1))
+    const clamped=Math.max(0,Math.min(slice.length-1,idx))
+    drawPriceChart(currentPriceSet,clamped)
+    const tip=priceTipEl()
+    const absIdx=Math.floor(priceViewStart)+clamped
+    tip.innerHTML=`<div class="chart-tooltip-label">Day ${absIdx+1}</div><span class="accent mono">$${currentPriceSet[absIdx].toFixed(2)}</span>`
+    tip.style.display='block'
+    tip.style.left=Math.min(mx+12,rect.width-140)+'px'
+    tip.style.top='30px'
+  })
+  canvas.addEventListener('mousedown',e=>{
+    priceDragStart=e.clientX
+    priceDragStartView=[priceViewStart,priceViewEnd]
+  })
+  document.addEventListener('mouseup',()=>{priceDragStart=null;priceDragStartView=null})
+  canvas.addEventListener('mouseleave',()=>{drawPriceChart(currentPriceSet);priceTipEl().style.display='none'})
+  canvas.addEventListener('wheel',e=>{
+    e.preventDefault()
+    priceZoom(e.deltaY>0?1.12:0.88)
+  },{passive:false})
+}
+
+/* ── VOLUME CHART ── */
+const volData=[
+  {date:'Feb 18', vol:11.6, fees:0.035},
+  {date:'Feb 19', vol:38.4, fees:0.115},
+  {date:'Feb 20', vol:44.2, fees:0.133},
+  {date:'Feb 21', vol:51.8, fees:0.155},
+  {date:'Feb 22', vol:48.3, fees:0.145},
+  {date:'Feb 23', vol:62.7, fees:0.188},
+  {date:'Feb 24', vol:90.8, fees:0.272},
+]
+
+function drawVolChart(hovIdx=-1){
+  const ctx=getCanvasCtx('volChart')
+  if(!ctx)return
+  const W=ctx._w, H=ctx._h
+  const padL=46, padR=12, padB=28, padT=14
+  const cW=W-padL-padR, cH=H-padB-padT
+  const maxVol=Math.max(...volData.map(d=>d.vol))*1.12
+  const maxFees=Math.max(...volData.map(d=>d.fees))
+  ctx.clearRect(0,0,W,H)
+  // y gridlines
+  const yTicks=4
+  ctx.font='9px IBM Plex Mono';ctx.textAlign='right'
+  for(let i=0;i<=yTicks;i++){
+    const yPct=i/yTicks, y=padT+cH*(1-yPct)
+    const val=(maxVol*yPct).toFixed(0)
+    ctx.fillStyle='rgba(61,90,120,0.7)';ctx.fillText(val+'m',padL-4,y+3)
+    ctx.strokeStyle='rgba(61,90,120,0.12)';ctx.lineWidth=1;ctx.setLineDash([3,3])
+    ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(W-padR,y);ctx.stroke()
+  }
+  ctx.setLineDash([])
+  // avg line
+  const avg=volData.reduce((a,b)=>a+b.vol,0)/volData.length
+  const avgY=padT+cH*(1-avg/maxVol)
+  ctx.strokeStyle='rgba(0,212,255,0.25)';ctx.lineWidth=1;ctx.setLineDash([4,3])
+  ctx.beginPath();ctx.moveTo(padL,avgY);ctx.lineTo(W-padR,avgY);ctx.stroke()
+  ctx.setLineDash([])
+  ctx.fillStyle='rgba(0,212,255,0.45)';ctx.font='9px IBM Plex Mono';ctx.textAlign='left'
+  ctx.fillText('avg',W-padR-22,avgY-3)
+  const bw=Math.min(40,cW/volData.length*0.52)
+  const gap=cW/volData.length
+  volData.forEach((d,i)=>{
+    const bx=padL+i*gap+gap/2
+    const bh=(d.vol/maxVol)*cH, by=padT+cH-bh
+    const hov=hovIdx===i
+    // volume bar
+    ctx.fillStyle=hov?'rgba(0,212,255,0.82)':'rgba(0,212,255,0.32)'
+    ctx.beginPath();ctx.roundRect(bx-bw/2,by,bw,bh,3);ctx.fill()
+    // fees bar (thin, right-aligned, green)
+    const fbh=(d.fees/maxFees)*cH*0.38, fby=padT+cH-fbh
+    ctx.fillStyle=hov?'rgba(57,217,138,0.95)':'rgba(57,217,138,0.6)'
+    ctx.beginPath();ctx.roundRect(bx+bw/2+2,fby,5,fbh,2);ctx.fill()
+    // date label
+    ctx.fillStyle='rgba(61,90,120,0.8)';ctx.font='9px IBM Plex Mono';ctx.textAlign='center'
+    ctx.fillText(d.date,bx,H-6)
+  })
+  // legend
+  ctx.font='10px IBM Plex Mono';ctx.textAlign='left'
+  ctx.fillStyle='rgba(0,212,255,0.55)';ctx.fillRect(padL,padT-2,10,7)
+  ctx.fillStyle='rgba(180,210,235,0.7)';ctx.fillText('Volume',padL+13,padT+5)
+  ctx.fillStyle='rgba(57,217,138,0.65)';ctx.fillRect(padL+68,padT-2,5,7)
+  ctx.fillStyle='rgba(180,210,235,0.7)';ctx.fillText('Fees',padL+76,padT+5)
+}
+
+function bindVolHover(){
+  const canvas=document.getElementById('volChart')
+  if(!canvas)return
+  const tip=document.getElementById('volTip')
+  canvas.addEventListener('mousemove',e=>{
+    const rect=canvas.getBoundingClientRect()
+    const mx=e.clientX-rect.left
+    const padL=46,padR=12,cW=rect.width-padL-padR
+    const gap=cW/volData.length
+    const idx=Math.floor((mx-padL)/gap)
+    if(idx>=0&&idx<volData.length){
+      drawVolChart(idx)
+      const d=volData[idx]
+      tip.innerHTML=`<div class="chart-tooltip-label">${d.date}</div>Volume: <span style="color:var(--accent);font-family:var(--fmono)">$${d.vol}m</span><br>Fees: <span style="color:var(--green);font-family:var(--fmono)">$${d.fees}m</span>`
+      tip.style.display='block'
+      tip.style.left=Math.min(mx+12,rect.width-170)+'px'
+      tip.style.top='20px'
+    }
+  })
+  canvas.addEventListener('mouseleave',()=>{drawVolChart();tip.style.display='none'})
+}
+
+function initCharts(){
+  initRangeSlider()
+  priceViewStart=0;priceViewEnd=currentPriceSet.length
+  initLiqChart()
+  drawPriceChart(currentPriceSet)
+  bindPriceHover()
+  drawVolChart()
+  bindVolHover()
+}
+
+/* ── INIT ── */
+document.addEventListener('DOMContentLoaded',()=>{
+  renderTable()
+  // handle resize for charts
+  window.addEventListener('resize',()=>{
+    const sim=document.getElementById('screen-simulate')
+    if(sim&&sim.classList.contains('on'))initCharts()
+  })
+})
+
+/* ── MODALS ── */
+function showModal(id){
+  document.getElementById('modal-'+id).classList.add('open')
+  document.body.style.overflow='hidden'
+}
+function closeModal(id){
+  document.getElementById('modal-'+id).classList.remove('open')
+  document.body.style.overflow=''
+}
+function closeModalOutside(e, id){
+  if(e.target.id==='modal-'+id) closeModal(id)
+}
+function switchModal(from, to){
+  closeModal(from)
+  setTimeout(()=>showModal(to),160)
+}
+function togglePwd(id,btn){
+  const inp=document.getElementById(id)
+  inp.type=inp.type==='password'?'text':'password'
+  btn.textContent=inp.type==='password'?'👁':'🙈'
+}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){document.querySelectorAll('.modal-overlay.open').forEach(m=>m.classList.remove('open'));document.body.style.overflow=''}})
+
+/* ── THEMES ── */
+const THEMES=[
+  {id:'cyan',    label:'Cyan Night',   bg:'#070b0f', bg2:'#0d1117', bg3:'#131b24', bg4:'#1a2535', bg5:'#1f2d40', border:'rgba(99,179,237,0.1)', border2:'rgba(99,179,237,0.2)', text:'#e2eaf4', text2:'#7a9cbf', text3:'#3d5a78', accent:'#00d4ff', accent2:'#0099cc', swatch:'linear-gradient(135deg,#070b0f 50%,#00d4ff 50%)', emoji:'🔵'},
+  {id:'purple',  label:'Deep Purple',  bg:'#09090f', bg2:'#0e0e1a', bg3:'#141425', bg4:'#1a1a30', bg5:'#1f1f38', border:'rgba(120,100,200,0.12)', border2:'rgba(120,100,200,0.28)', text:'#e8e8f0', text2:'#9494b0', text3:'#5a5a78', accent:'#7c6af7', accent2:'#a995ff', swatch:'linear-gradient(135deg,#09090f 50%,#7c6af7 50%)', emoji:'🟣'},
+  {id:'emerald', label:'Emerald',      bg:'#080f0a', bg2:'#0d1710', bg3:'#11211a', bg4:'#172c22', bg5:'#1c3629', border:'rgba(52,211,153,0.1)', border2:'rgba(52,211,153,0.2)', text:'#e0f0ea', text2:'#6aab8a', text3:'#2d6048', accent:'#10d670', accent2:'#07a854', swatch:'linear-gradient(135deg,#080f0a 50%,#10d670 50%)', emoji:'🟢'},
+  {id:'amber',   label:'Amber Dark',   bg:'#0c0900', bg2:'#140f02', bg3:'#1e1603', bg4:'#271d04', bg5:'#302406', border:'rgba(245,158,11,0.12)', border2:'rgba(245,158,11,0.25)', text:'#f5ead0', text2:'#b8952a', text3:'#7a5f0e', accent:'#f59e0b', accent2:'#d97706', swatch:'linear-gradient(135deg,#0c0900 50%,#f59e0b 50%)', emoji:'🟡'},
+  {id:'rose',    label:'Rose Noir',    bg:'#0f070a', bg2:'#180b0f', bg3:'#220f16', bg4:'#2d141e', bg5:'#381826', border:'rgba(244,63,94,0.12)', border2:'rgba(244,63,94,0.25)', text:'#f5dde4', text2:'#c06070', text3:'#7a3545', accent:'#f43f5e', accent2:'#e11d48', swatch:'linear-gradient(135deg,#0f070a 50%,#f43f5e 50%)', emoji:'🔴'},
+  {id:'slate',   label:'Slate Light',  bg:'#f0f4f8', bg2:'#ffffff', bg3:'#e8edf4', bg4:'#d9e2ef', bg5:'#c8d4e3', border:'rgba(60,80,120,0.12)', border2:'rgba(60,80,120,0.22)', text:'#1a2540', text2:'#4a6080', text3:'#8a9ab8', accent:'#2563eb', accent2:'#1d4ed8', swatch:'linear-gradient(135deg,#f0f4f8 50%,#2563eb 50%)', emoji:'⚪'},
+  {id:'nord',    label:'Nord',         bg:'#1a1e2a', bg2:'#242938', bg3:'#2e3447', bg4:'#38404f', bg5:'#424d60', border:'rgba(136,192,208,0.12)', border2:'rgba(136,192,208,0.25)', text:'#eceff4', text2:'#88c0d0', text3:'#4c566a', accent:'#88c0d0', accent2:'#81a1c1', swatch:'linear-gradient(135deg,#1a1e2a 50%,#88c0d0 50%)', emoji:'🩵'},
+  {id:'peach',   label:'Peach Dusk',   bg:'#0e0808', bg2:'#160e0e', bg3:'#1e1414', bg4:'#281a1a', bg5:'#322020', border:'rgba(251,146,60,0.12)', border2:'rgba(251,146,60,0.25)', text:'#fce8d8', text2:'#c07850', text3:'#7a4830', accent:'#fb923c', accent2:'#ea7a28', swatch:'linear-gradient(135deg,#0e0808 50%,#fb923c 50%)', emoji:'🟠'},
+  {id:'cobalt',  label:'Cobalt',       bg:'#050914', bg2:'#090f1e', bg3:'#0d1528', bg4:'#111b32', bg5:'#16213d', border:'rgba(96,165,250,0.12)', border2:'rgba(96,165,250,0.25)', text:'#dceeff', text2:'#5a88c0', text3:'#2a4878', accent:'#60a5fa', accent2:'#3b82f6', swatch:'linear-gradient(135deg,#050914 50%,#60a5fa 50%)', emoji:'🫐'},
+  {id:'forest',  label:'Forest',       bg:'#050c08', bg2:'#0a1410', bg3:'#0f1c17', bg4:'#14241e', bg5:'#192d26', border:'rgba(74,222,128,0.1)', border2:'rgba(74,222,128,0.2)', text:'#d8f0e0', text2:'#509870', text3:'#286048', accent:'#4ade80', accent2:'#22c55e', swatch:'linear-gradient(135deg,#050c08 50%,#4ade80 50%)', emoji:'🌲'},
+]
+
+let currentTheme='cyan'
+
+function applyTheme(t){
+  const r=document.documentElement.style
+  r.setProperty('--bg',t.bg)
+  r.setProperty('--bg2',t.bg2)
+  r.setProperty('--bg3',t.bg3)
+  r.setProperty('--bg4',t.bg4)
+  r.setProperty('--bg5',t.bg5)
+  r.setProperty('--border',t.border)
+  r.setProperty('--border2',t.border2)
+  r.setProperty('--text',t.text)
+  r.setProperty('--text2',t.text2)
+  r.setProperty('--text3',t.text3)
+  r.setProperty('--accent',t.accent)
+  r.setProperty('--accent2',t.accent2)
+  currentTheme=t.id
+  document.querySelectorAll('.theme-swatch').forEach(s=>s.classList.toggle('active',s.dataset.id===t.id))
+}
+
+function buildThemeGrid(){
+  const grid=document.getElementById('themeGrid')
+  if(!grid)return
+  grid.innerHTML=THEMES.map(t=>`
+    <div>
+      <div class="theme-swatch${t.id===currentTheme?' active':''}"
+        data-id="${t.id}"
+        style="background:${t.swatch}"
+        onclick="applyTheme(THEMES.find(x=>x.id==='${t.id}'));closePicker()"
+        title="${t.label}">
+      </div>
+      <div class="theme-swatch-label">${t.label}</div>
+    </div>`).join('')
+}
+
+function toggleThemePicker(){
+  const p=document.getElementById('themePicker')
+  const isOpen=p.style.display!=='none'
+  p.style.display=isOpen?'none':'block'
+  if(!isOpen)buildThemeGrid()
+}
+function closePicker(){document.getElementById('themePicker').style.display='none'}
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#themePicker')&&!e.target.closest('#themePickerBtn'))
+    closePicker()
+})
+
+</script>
+</body>
+</html>
