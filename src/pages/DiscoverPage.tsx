@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import type {
   DiscoverPool,
   DiscoverPoolsResponse,
@@ -17,10 +18,32 @@ type TabOption = {
   orderDir: 'asc' | 'desc'
 }
 
-const tabs: TabOption[] = [
+type OptionalColumnKey = 'col-vol' | 'col-fees' | 'col-feespc' | 'col-corr' | 'col-vol2'
+
+type ColumnVisibility = Record<OptionalColumnKey, boolean>
+
+const TABS: TabOption[] = [
   { id: 'overview', label: 'Overview', orderBy: 'average_apr', orderDir: 'desc' },
   { id: 'fees', label: 'Fees', orderBy: 'avg_daily_fees_usd', orderDir: 'desc' },
   { id: 'liquidity', label: 'Liquidity', orderBy: 'tvl_usd', orderDir: 'desc' },
+]
+
+const DEFAULT_COLUMN_VISIBILITY: ColumnVisibility = {
+  'col-vol': true,
+  'col-fees': true,
+  'col-feespc': true,
+  'col-corr': true,
+  'col-vol2': true,
+}
+
+const FAVORITES_STORAGE_KEY = 'pool_atlas_discover_favorites'
+
+const OPTIONAL_COLUMNS: Array<{ id: OptionalColumnKey; label: string }> = [
+  { id: 'col-vol', label: 'Daily Vol/TVL' },
+  { id: 'col-fees', label: 'Avg Daily Fees' },
+  { id: 'col-feespc', label: 'Daily Fees/TVL' },
+  { id: 'col-corr', label: 'Correlation' },
+  { id: 'col-vol2', label: 'Avg Daily Volume' },
 ]
 
 const formatCurrency = (value: number | string | null) => {
@@ -35,14 +58,6 @@ const formatCurrency = (value: number | string | null) => {
   }).format(parsed)
 }
 
-const formatNumber = (value: number | string | null, digits = 2) => {
-  const parsed = Number(value)
-  if (!Number.isFinite(parsed)) {
-    return '--'
-  }
-  return parsed.toFixed(digits)
-}
-
 const formatPercent = (value: number | string | null, digits = 2) => {
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) {
@@ -51,120 +66,110 @@ const formatPercent = (value: number | string | null, digits = 2) => {
   return `${parsed.toFixed(digits)}%`
 }
 
-const formatFeeTier = (value: number | string) => {
+const formatNumber = (value: number | string | null, digits = 2) => {
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) {
-    return value || '--'
+    return '--'
   }
-  return `${(parsed / 10000).toFixed(2)}%`
+  return parsed.toFixed(digits)
 }
 
-const getSortState = (
-  key: string,
-  orderBy: string,
-  orderDir: 'asc' | 'desc',
-) => {
-  if (orderBy !== key) {
-    return ''
+const readFavorites = () => {
+  if (typeof window === 'undefined') {
+    return new Set<number>()
   }
-  return orderDir === 'asc' ? 'asc' : 'desc'
-}
 
-type ComboItem<T> = {
-  value: string
-  label: string
-  search: string
-  data: T
-}
-
-type SearchableComboboxProps<T> = {
-  id: string
-  placeholder: string
-  items: ComboItem<T>[]
-  query: string
-  disabled: boolean
-  isLoading: boolean
-  emptyMessage?: string
-  onQueryChange: (value: string) => void
-  onSelect: (item: ComboItem<T>) => void
-}
-
-function SearchableCombobox<T>({
-  id,
-  placeholder,
-  items,
-  query,
-  disabled,
-  isLoading,
-  emptyMessage,
-  onQueryChange,
-  onSelect,
-}: SearchableComboboxProps<T>) {
-  const [open, setOpen] = useState(false)
-  const normalizedQuery = query.trim().toLowerCase()
-
-  const filteredItems = useMemo(() => {
-    if (!normalizedQuery) {
-      return items.slice(0, 80)
+  try {
+    const raw = window.localStorage.getItem(FAVORITES_STORAGE_KEY)
+    if (!raw) {
+      return new Set<number>()
     }
-    return items.filter((item) => item.search.includes(normalizedQuery)).slice(0, 80)
-  }, [items, normalizedQuery])
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) {
+      return new Set<number>()
+    }
+    return new Set(
+      parsed
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value)),
+    )
+  } catch {
+    return new Set<number>()
+  }
+}
 
-  return (
-    <div className="combo">
-      <input
-        className="combo-input"
-        type="text"
-        role="combobox"
-        aria-autocomplete="list"
-        aria-expanded={open && !disabled}
-        aria-controls={`${id}-list`}
-        placeholder={placeholder}
-        value={query}
-        onChange={(event) => {
-          onQueryChange(event.target.value)
-          if (!open) {
-            setOpen(true)
-          }
-        }}
-        onFocus={() => {
-          if (!disabled) {
-            setOpen(true)
-          }
-        }}
-        onBlur={() => {
-          window.setTimeout(() => setOpen(false), 120)
-        }}
-        disabled={disabled}
-        autoComplete="off"
-      />
-      {open && !disabled && (
-        <div className="combo-list" role="listbox" id={`${id}-list`}>
-          {isLoading ? (
-            <div className="combo-empty">Loading options...</div>
-          ) : filteredItems.length === 0 ? (
-            <div className="combo-empty">{emptyMessage ?? 'No matches found.'}</div>
-          ) : (
-            filteredItems.map((item) => (
-              <button
-                key={item.value}
-                type="button"
-                className="combo-option"
-                role="option"
-                onMouseDown={(event) => {
-                  event.preventDefault()
-                  onSelect(item)
-                  setOpen(false)
-                }}
-              >
-                <span>{item.label}</span>
-              </button>
-            ))
-          )}
-        </div>
-      )}
-    </div>
-  )
+const getSortLabel = (orderBy: string, orderDir: 'asc' | 'desc') => {
+  const labels: Record<string, string> = {
+    average_apr: 'Average APR',
+    avg_daily_fees_usd: 'Average Daily Fees',
+    tvl_usd: 'TVL',
+    price_volatility: 'Price Volatility',
+    correlation: 'Correlation',
+    daily_fees_tvl_pct: 'Fees/TVL',
+    avg_daily_volume_usd: 'Average Daily Volume',
+    daily_volume_tvl_pct: 'Volume/TVL',
+  }
+
+  const name = labels[orderBy] ?? orderBy.replace(/_/g, ' ')
+  return `${name} (${orderDir})`
+}
+
+const parsePoolTokens = (poolName: string) => {
+  const separators = ['/', '-', ':']
+  for (const separator of separators) {
+    if (poolName.includes(separator)) {
+      const [left, right] = poolName.split(separator).map((item) => item.trim())
+      if (left && right) {
+        return [left, right] as const
+      }
+    }
+  }
+  return [poolName.trim() || 'Token A', 'Token B'] as const
+}
+
+const getPoolTokenSymbols = (pool: DiscoverPool) => {
+  const token0 = pool.token0_symbol?.trim()
+  const token1 = pool.token1_symbol?.trim()
+  if (token0 && token1) {
+    return [token0, token1] as const
+  }
+  return parsePoolTokens(pool.pool_name)
+}
+
+const parseOptionalNumber = (value: unknown) => {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+const getTokenClass = (symbol: string) => {
+  const normalized = symbol.toLowerCase()
+  if (normalized.includes('eth')) {
+    return 'eth'
+  }
+  if (normalized.includes('usdc') || normalized.includes('usd')) {
+    return 'usdc'
+  }
+  if (normalized.includes('btc')) {
+    return 'btc'
+  }
+  if (normalized.includes('arb')) {
+    return 'arb'
+  }
+  if (normalized.includes('usdt')) {
+    return 'usdt'
+  }
+  return ''
+}
+
+const getVisiblePages = (currentPage: number, totalPages: number) => {
+  if (totalPages <= 5) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1)
+  }
+
+  const pages = new Set<number>([1, totalPages, currentPage, currentPage - 1, currentPage + 1])
+  return Array.from(pages)
+    .filter((value) => value >= 1 && value <= totalPages)
+    .sort((a, b) => a - b)
 }
 
 function DiscoverPage() {
@@ -174,7 +179,7 @@ function DiscoverPage() {
   const [orderBy, setOrderBy] = useState('average_apr')
   const [orderDir, setOrderDir] = useState<'asc' | 'desc'>('desc')
   const [activeTab, setActiveTab] = useState<TabOption['id']>('overview')
-  const [symbolQuery, setSymbolQuery] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
 
   const [data, setData] = useState<DiscoverPoolsResponse | null>(null)
   const [status, setStatus] = useState<LoadStatus>('loading')
@@ -182,51 +187,53 @@ function DiscoverPage() {
 
   const [exchanges, setExchanges] = useState<Exchange[]>([])
   const [exchangesStatus, setExchangesStatus] = useState<LoadStatus>('loading')
+  const [exchangesError, setExchangesError] = useState('')
   const [networks, setNetworks] = useState<Network[]>([])
   const [networksStatus, setNetworksStatus] = useState<LoadStatus>('idle')
+  const [networksError, setNetworksError] = useState('')
+
   const [exchangeId, setExchangeId] = useState<number | ''>('')
-  const [exchangeQuery, setExchangeQuery] = useState('')
   const [networkId, setNetworkId] = useState<number | ''>('')
-  const [networkQuery, setNetworkQuery] = useState('')
 
-  const totalPages = useMemo(() => {
-    if (!data?.total || data.total <= 0) {
-      return 1
+  const [showFavorites, setShowFavorites] = useState(false)
+  const [favorites, setFavorites] = useState<Set<number>>(() => readFavorites())
+  const [columnVisibility, setColumnVisibility] =
+    useState<ColumnVisibility>(DEFAULT_COLUMN_VISIBILITY)
+  const [isColumnMenuOpen, setIsColumnMenuOpen] = useState(false)
+
+  const columnMenuRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
     }
-    return Math.max(1, Math.ceil(data.total / pageSize))
-  }, [data?.total, pageSize])
+    window.localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(Array.from(favorites)))
+  }, [favorites])
 
-  const rows = data?.data ?? []
+  useEffect(() => {
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (!columnMenuRef.current) {
+        return
+      }
+      if (!columnMenuRef.current.contains(event.target as Node)) {
+        setIsColumnMenuOpen(false)
+      }
+    }
 
-  const exchangeItems = useMemo(
-    () =>
-      exchanges.map((item) => ({
-        value: String(item.id),
-        label: item.name,
-        search: item.name.toLowerCase(),
-        data: item,
-      })),
-    [exchanges],
-  )
-
-  const networkItems = useMemo(
-    () =>
-      networks.map((item) => ({
-        value: String(item.id),
-        label: item.name,
-        search: item.name.toLowerCase(),
-        data: item,
-      })),
-    [networks],
-  )
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick)
+    }
+  }, [])
 
   useEffect(() => {
     const controller = new AbortController()
+
     getDiscoverPools(
       {
         network_id: networkId ? Number(networkId) : undefined,
         exchange_id: exchangeId ? Number(exchangeId) : undefined,
-        token_symbol: symbolQuery.trim() || undefined,
+        token_symbol: searchQuery.trim() || undefined,
         timeframe_days: timeframeDays,
         page,
         page_size: pageSize,
@@ -239,539 +246,634 @@ function DiscoverPage() {
         setData(response)
         setStatus('success')
       })
-      .catch((err) => {
-        if (err instanceof DOMException && err.name === 'AbortError') {
+      .catch((fetchError) => {
+        if (fetchError instanceof DOMException && fetchError.name === 'AbortError') {
           return
         }
-        const message = err instanceof Error ? err.message : 'Unable to load pools.'
-        setError(message)
+        setError(fetchError instanceof Error ? fetchError.message : 'Unable to load pools.')
         setStatus('error')
       })
+
     return () => controller.abort()
-  }, [exchangeId, networkId, orderBy, orderDir, page, pageSize, symbolQuery, timeframeDays])
+  }, [exchangeId, networkId, orderBy, orderDir, page, pageSize, searchQuery, timeframeDays])
 
   useEffect(() => {
     const controller = new AbortController()
+
+    setExchangesStatus('loading')
+    setExchangesError('')
+
     getExchanges(controller.signal)
       .then((response) => {
         setExchanges(response)
         setExchangesStatus('success')
       })
-      .catch((err) => {
-        if (err instanceof DOMException && err.name === 'AbortError') {
+      .catch((fetchError) => {
+        if (fetchError instanceof DOMException && fetchError.name === 'AbortError') {
           return
         }
         setExchangesStatus('error')
+        setExchangesError(
+          fetchError instanceof Error ? fetchError.message : 'Unable to load exchanges.',
+        )
       })
+
     return () => controller.abort()
   }, [])
 
   useEffect(() => {
     if (!exchangeId) {
+      setNetworks([])
+      setNetworksStatus('idle')
+      setNetworksError('')
       return
     }
+
     const controller = new AbortController()
-    getNetworks(exchangeId, controller.signal)
+
+    setNetworksStatus('loading')
+    setNetworksError('')
+
+    getNetworks(Number(exchangeId), controller.signal)
       .then((response) => {
         setNetworks(response)
         setNetworksStatus('success')
       })
-      .catch((err) => {
-        if (err instanceof DOMException && err.name === 'AbortError') {
+      .catch((fetchError) => {
+        if (fetchError instanceof DOMException && fetchError.name === 'AbortError') {
           return
         }
         setNetworksStatus('error')
+        setNetworksError(
+          fetchError instanceof Error ? fetchError.message : 'Unable to load networks.',
+        )
       })
+
     return () => controller.abort()
   }, [exchangeId])
 
-  const handleExchangeQueryChange = (value: string) => {
-    setExchangeQuery(value)
-    if (!exchangeId) {
-      return
-    }
-    const normalized = value.trim().toLowerCase()
-    const selected = exchanges.find((item) => item.id === exchangeId)
-    if (!selected || selected.name.toLowerCase() !== normalized) {
-      setExchangeId('')
-      setNetworkId('')
-      setNetworkQuery('')
-      setNetworks([])
-      setNetworksStatus('idle')
-    }
-  }
+  const rows = data?.data ?? []
 
-  const handleExchangeSelect = (item: ComboItem<Exchange>) => {
-    setExchangeId(item.data.id)
-    setExchangeQuery(item.data.name)
-    setNetworkId('')
-    setNetworkQuery('')
-    setNetworks([])
-    setNetworksStatus('loading')
-    setStatus('loading')
-    setError('')
-    setPage(1)
-  }
-
-  const handleNetworkQueryChange = (value: string) => {
-    setNetworkQuery(value)
-    if (!networkId) {
-      return
+  const totalPages = useMemo(() => {
+    if (!data?.total || data.total <= 0) {
+      return 1
     }
-    const normalized = value.trim().toLowerCase()
-    const selected = networks.find((item) => item.id === networkId)
-    if (!selected || selected.name.toLowerCase() !== normalized) {
-      setNetworkId('')
-    }
-  }
+    return Math.max(1, Math.ceil(data.total / pageSize))
+  }, [data?.total, pageSize])
 
-  const handleNetworkSelect = (item: ComboItem<Network>) => {
-    setNetworkId(item.data.id)
-    setNetworkQuery(item.data.name)
-    setStatus('loading')
-    setError('')
-    setPage(1)
+  const topPoolsCount = data?.total ?? rows.length
+
+  const searchedRows = useMemo(() => {
+    const normalized = searchQuery.trim().toLowerCase()
+    if (!normalized) {
+      return rows
+    }
+
+    return rows.filter((pool) => {
+      const poolName = pool.pool_name?.toLowerCase() ?? ''
+      const exchangeName = pool.exchange?.toLowerCase() ?? ''
+      const networkName = pool.network?.toLowerCase() ?? ''
+      return (
+        poolName.includes(normalized) ||
+        exchangeName.includes(normalized) ||
+        networkName.includes(normalized)
+      )
+    })
+  }, [rows, searchQuery])
+
+  const visibleRows = useMemo(() => {
+    if (!showFavorites) {
+      return searchedRows
+    }
+    return searchedRows.filter((pool) => favorites.has(pool.pool_id))
+  }, [favorites, searchedRows, showFavorites])
+
+  const currentExchange = useMemo(
+    () => exchanges.find((exchange) => exchange.id === exchangeId) ?? null,
+    [exchangeId, exchanges],
+  )
+
+  const currentNetwork = useMemo(
+    () => networks.find((network) => network.id === networkId) ?? null,
+    [networkId, networks],
+  )
+
+  const visibleOptionalColumnCount = OPTIONAL_COLUMNS.filter(
+    (column) => columnVisibility[column.id],
+  ).length
+
+  const selectedColumnCount = 3 + visibleOptionalColumnCount
+
+  const visiblePages = getVisiblePages(page, totalPages)
+
+  const getSortIndicator = (key: string) => {
+    if (orderBy !== key) {
+      return '↕'
+    }
+    return orderDir === 'asc' ? '▲' : '▼'
   }
 
   const handleSort = (key: string) => {
     setStatus('loading')
     setError('')
+
     if (orderBy === key) {
-      setOrderDir((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+      setOrderDir((current) => (current === 'asc' ? 'desc' : 'asc'))
       return
     }
+
     setOrderBy(key)
     setOrderDir('desc')
   }
 
   const handleTabSelect = (tab: TabOption) => {
-    setStatus('loading')
-    setError('')
     setActiveTab(tab.id)
     setOrderBy(tab.orderBy)
     setOrderDir(tab.orderDir)
+    setPage(1)
+    setStatus('loading')
+    setError('')
   }
 
   const handlePageChange = (nextPage: number) => {
+    const clampedPage = Math.max(1, Math.min(totalPages, nextPage))
+    if (clampedPage === page) {
+      return
+    }
+    setPage(clampedPage)
     setStatus('loading')
     setError('')
-    const clamped = Math.max(1, Math.min(totalPages, nextPage))
-    setPage(clamped)
   }
 
-  const getPoolUrl = (pool: DiscoverPool) => {
-    if (!pool.pool_address || !pool.network || !pool.exchange) {
+  const toggleFavorite = (poolId: number) => {
+    setFavorites((current) => {
+      const next = new Set(current)
+      if (next.has(poolId)) {
+        next.delete(poolId)
+      } else {
+        next.add(poolId)
+      }
+      return next
+    })
+  }
+
+  const toggleColumn = (columnId: OptionalColumnKey) => {
+    setColumnVisibility((current) => ({
+      ...current,
+      [columnId]: !current[columnId],
+    }))
+  }
+
+  const handleResetFilters = () => {
+    setSearchQuery('')
+    setExchangeId('')
+    setNetworkId('')
+    setTimeframeDays(14)
+    setPage(1)
+    setPageSize(10)
+    setShowFavorites(false)
+    setStatus('loading')
+    setError('')
+  }
+
+  const getPoolDetailsHref = (pool: DiscoverPool) => {
+    if (!pool.pool_address) {
       return ''
     }
-    const exchange = pool.exchange.toLowerCase()
-    if (exchange.includes('uniswap')) {
-      return `https://app.uniswap.org/explore/pools/${pool.network}/${pool.pool_address}`
+
+    const resolvedExchangeId = parseOptionalNumber(pool.dex_id) ?? parseOptionalNumber(exchangeId)
+    const resolvedNetworkId = parseOptionalNumber(pool.chain_id) ?? parseOptionalNumber(networkId)
+
+    if (!resolvedExchangeId || !resolvedNetworkId) {
+      return ''
     }
-    return ''
+
+    const [token0Symbol, token1Symbol] = getPoolTokenSymbols(pool)
+
+    const query = new URLSearchParams({
+      exchange_id: String(resolvedExchangeId),
+      network_id: String(resolvedNetworkId),
+      token0_symbol: token0Symbol,
+      token1_symbol: token1Symbol,
+    })
+
+    if (pool.token0_address?.trim()) {
+      query.set('token0', pool.token0_address.trim())
+    }
+    if (pool.token1_address?.trim()) {
+      query.set('token1', pool.token1_address.trim())
+    }
+    if (pool.token0_icon_url?.trim()) {
+      query.set('token0_icon_url', pool.token0_icon_url.trim())
+    }
+    if (pool.token1_icon_url?.trim()) {
+      query.set('token1_icon_url', pool.token1_icon_url.trim())
+    }
+
+    const exchangeName = pool.exchange?.trim() || currentExchange?.name?.trim()
+    if (exchangeName) {
+      query.set('exchange_name', exchangeName)
+    }
+
+    const networkName = pool.network?.trim() || currentNetwork?.name?.trim()
+    if (networkName) {
+      query.set('network_name', networkName)
+    }
+
+    return `/simulate/pools/${encodeURIComponent(pool.pool_address)}?${query.toString()}`
   }
 
   return (
     <main className="discover-page">
-      <header className="discover-hero">
-        <div>
-          <p className="eyebrow">Discover</p>
-          <h1>Liquidity Pools</h1>
-          <p className="subtext">
-            Compare pools across exchanges using real-time performance metrics.
-          </p>
-        </div>
-        <div className="hero-note">
-          <span>Data freshness</span>
-          <strong>Live</strong>
-        </div>
-      </header>
-
-      <section className="discover-card">
-        <div className="card-header">
-          <div>
-            <h2>Filters</h2>
-            <p>Refine the discovery feed using network and exchange.</p>
+      <div className="discover-wrap">
+        <div className="flex aic jb mb16 discover-header-row">
+          <div className="flex aic g12 discover-title-wrap">
+            <h1 className="discover-title">Radar</h1>
+            <div className="tabs" id="discoverTabs" role="tablist" aria-label="Radar tabs">
+              {TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  className={`tb${activeTab === tab.id ? ' on' : ''}`}
+                  onClick={() => handleTabSelect(tab)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="tab-group" role="tablist" aria-label="Discover views">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                role="tab"
-                aria-selected={activeTab === tab.id}
-                className={activeTab === tab.id ? 'active' : ''}
-                onClick={() => handleTabSelect(tab)}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          <span className="dim small mono">{topPoolsCount} pools</span>
         </div>
 
-        <div className="filters-grid">
-          <label className="field">
-            <span>Exchange</span>
-            <SearchableCombobox
-              id="discover-exchange"
-              placeholder={
-                exchangesStatus === 'loading' ? 'Loading exchanges...' : 'Select exchange'
-              }
-              items={exchangeItems}
-              query={exchangeQuery}
-              disabled={exchangesStatus === 'loading' || exchangesStatus === 'error'}
-              isLoading={exchangesStatus === 'loading'}
-              emptyMessage="No exchanges found."
-              onQueryChange={handleExchangeQueryChange}
-              onSelect={handleExchangeSelect}
-            />
-          </label>
-          <label className="field">
-            <span>Network</span>
-            <SearchableCombobox
-              id="discover-network"
-              placeholder={
-                !exchangeId
-                  ? 'Select exchange first'
-                  : networksStatus === 'loading'
-                    ? 'Loading networks...'
-                    : 'Select network'
-              }
-              items={networkItems}
-              query={networkQuery}
-              disabled={!exchangeId || networksStatus === 'loading' || networksStatus === 'error'}
-              isLoading={networksStatus === 'loading'}
-              emptyMessage="No networks found."
-              onQueryChange={handleNetworkQueryChange}
-              onSelect={handleNetworkSelect}
-            />
-          </label>
-          <label className="field">
-            <span>Timeframe (Days)</span>
-            <input
-              type="number"
-              min="1"
-              max="365"
-              value={timeframeDays}
-              onChange={(event) => {
-                const value = Number(event.target.value)
-                if (!Number.isFinite(value)) {
-                  return
-                }
-                setTimeframeDays(Math.min(365, Math.max(1, Math.round(value))))
-                setStatus('loading')
-                setError('')
-                setPage(1)
-              }}
-            />
-          </label>
-          <label className="field">
-            <span>Token Symbol</span>
-            <input
-              type="text"
-              value={symbolQuery}
-              placeholder="Filter by symbol"
-              onChange={(event) => {
-                setSymbolQuery(event.target.value)
-                setPage(1)
-                setStatus('loading')
-                setError('')
-              }}
-            />
-          </label>
-        </div>
-      </section>
-
-      <section className="discover-card">
-        <div className="card-header">
-          <div>
-            <h2>Pools</h2>
-            <p>Sorted by {orderBy.replace(/_/g, ' ')}.</p>
-          </div>
-          <div className="pagination-meta">
-            <span>
-              Page {page} of {totalPages}
-            </span>
-            <select
-              value={pageSize}
-              onChange={(event) => {
-                setPageSize(Number(event.target.value))
-                setStatus('loading')
-                setError('')
-                setPage(1)
-              }}
+        <div className="flex aic g8 mb16 discover-filters-row">
+          <div className="inp-icon-wrap discover-search">
+            <svg
+              className="inp-icon"
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              aria-hidden="true"
             >
-              {[10, 25, 50, 100].map((size) => (
-                <option key={size} value={size}>
-                  {size} rows
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.35-4.35" />
+            </svg>
+            <input
+              className="inp"
+              type="text"
+              placeholder="Search token or pool..."
+              value={searchQuery}
+              onChange={(event) => {
+                setSearchQuery(event.target.value)
+                setPage(1)
+                setStatus('loading')
+                setError('')
+              }}
+            />
+          </div>
+
+          <div className="sel-wrap discover-select">
+            <select
+              className="inp sel"
+              value={exchangeId}
+              onChange={(event) => {
+                const nextExchangeId = event.target.value ? Number(event.target.value) : ''
+                setExchangeId(nextExchangeId)
+                setNetworkId('')
+                setPage(1)
+                setStatus('loading')
+                setError('')
+              }}
+              disabled={exchangesStatus === 'loading'}
+            >
+              <option value="">
+                {exchangesStatus === 'loading' ? 'Loading exchanges...' : 'All Exchanges'}
+              </option>
+              {exchanges.map((exchange) => (
+                <option key={exchange.id} value={exchange.id}>
+                  {exchange.name}
                 </option>
               ))}
             </select>
           </div>
+
+          <div className="sel-wrap discover-select discover-select-network">
+            <select
+              className="inp sel"
+              value={networkId}
+              onChange={(event) => {
+                const nextNetworkId = event.target.value ? Number(event.target.value) : ''
+                setNetworkId(nextNetworkId)
+                setPage(1)
+                setStatus('loading')
+                setError('')
+              }}
+              disabled={!exchangeId || networksStatus === 'loading' || networksStatus === 'error'}
+            >
+              <option value="">
+                {!exchangeId
+                  ? 'All Networks'
+                  : networksStatus === 'loading'
+                    ? 'Loading networks...'
+                    : networksStatus === 'error'
+                      ? 'Unable to load networks'
+                      : 'All Networks'}
+              </option>
+              {networks.map((network) => (
+                <option key={network.id} value={network.id}>
+                  {network.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="sel-wrap discover-select discover-select-timeframe">
+            <select
+              className="inp sel"
+              value={timeframeDays}
+              onChange={(event) => {
+                const value = Number(event.target.value)
+                setTimeframeDays(value)
+                setPage(1)
+                setStatus('loading')
+                setError('')
+              }}
+            >
+              <option value={14}>Timeframe: 14 days</option>
+              <option value={7}>7 days</option>
+              <option value={30}>30 days</option>
+            </select>
+          </div>
+
+          <button type="button" className="btn btn-ghost btn-sm" onClick={handleResetFilters}>
+            Reset
+          </button>
         </div>
 
-        {status === 'loading' && <div className="state">Loading pools...</div>}
-        {status === 'error' && <div className="state error">{error}</div>}
-        {status === 'success' && rows.length === 0 && (
-          <div className="state">No pools found for this filter.</div>
+        {(exchangesStatus === 'error' || networksStatus === 'error') && (
+          <div className="discover-state error mb16">
+            {exchangesStatus === 'error' ? exchangesError : networksError}
+          </div>
         )}
 
-        {rows.length > 0 && (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>
-                    <button
-                      type="button"
-                      className="sort-button"
-                      onClick={() => handleSort('pool_name')}
-                    >
-                      Pool
-                      <span
-                        className={`sort-indicator ${getSortState(
-                          'pool_name',
-                          orderBy,
-                          orderDir,
-                        )}`}
-                        aria-hidden="true"
-                      />
-                    </button>
-                  </th>
-                  <th>
-                    <button
-                      type="button"
-                      className="sort-button"
-                      onClick={() => handleSort('fee_tier')}
-                    >
-                      Fee Tier
-                      <span
-                        className={`sort-indicator ${getSortState(
-                          'fee_tier',
-                          orderBy,
-                          orderDir,
-                        )}`}
-                        aria-hidden="true"
-                      />
-                    </button>
-                  </th>
-                  <th>
-                    <button
-                      type="button"
-                      className="sort-button"
+        <div className="card discover-table-card">
+          <div className="discover-table-toolbar">
+            <div className="flex g8 aic">
+              <button
+                type="button"
+                className={`tb${showFavorites ? '' : ' on'}`}
+                onClick={() => setShowFavorites(false)}
+              >
+                Top Pools (<span>{topPoolsCount}</span>)
+              </button>
+              <button
+                type="button"
+                className={`tb${showFavorites ? ' on' : ''}`}
+                onClick={() => setShowFavorites(true)}
+              >
+                ⭐ Favorites ({favorites.size})
+              </button>
+            </div>
+
+            <div className="col-wrap" ref={columnMenuRef}>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setIsColumnMenuOpen((current) => !current)}
+              >
+                Columns (<span>{selectedColumnCount}</span>/8) ▾
+              </button>
+              <div className={`col-dropdown${isColumnMenuOpen ? ' open' : ''}`}>
+                <div className="col-dropdown-title">Toggle columns</div>
+                {OPTIONAL_COLUMNS.map((column) => (
+                  <button
+                    key={column.id}
+                    type="button"
+                    className="col-row"
+                    onClick={() => toggleColumn(column.id)}
+                  >
+                    <span>{column.label}</span>
+                    <div className={`col-check${columnVisibility[column.id] ? ' on' : ''}`}>
+                      {columnVisibility[column.id] ? '✓' : ''}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="tbl-wrap mt8" id="tableArea">
+            <div className="discover-tab-hint">
+              Sorted by: <span>{getSortLabel(orderBy, orderDir)}</span>
+            </div>
+
+            {status === 'loading' && <div className="discover-state">Loading pools...</div>}
+            {status === 'error' && <div className="discover-state error">{error}</div>}
+            {status === 'success' && visibleRows.length === 0 && (
+              <div className="discover-state">No pools found for this filter.</div>
+            )}
+
+            {visibleRows.length > 0 && (
+              <table>
+                <thead>
+                  <tr>
+                    <th style={{ width: 28 }} />
+                    <th>Pool</th>
+                    <th
+                      className={orderBy === 'average_apr' ? 'sort-on' : ''}
                       onClick={() => handleSort('average_apr')}
                     >
-                      Avg APR
-                      <span
-                        className={`sort-indicator ${getSortState(
-                          'average_apr',
-                          orderBy,
-                          orderDir,
-                        )}`}
-                        aria-hidden="true"
-                      />
-                    </button>
-                  </th>
-                  <th>
-                    <button
-                      type="button"
-                      className="sort-button"
+                      Avg APR <span className="sarr">{getSortIndicator('average_apr')}</span>
+                    </th>
+                    <th
+                      className={orderBy === 'price_volatility' ? 'sort-on' : ''}
                       onClick={() => handleSort('price_volatility')}
                     >
-                      Price Volatility
-                      <span
-                        className={`sort-indicator ${getSortState(
-                          'price_volatility',
-                          orderBy,
-                          orderDir,
-                        )}`}
-                        aria-hidden="true"
-                      />
-                    </button>
-                  </th>
-                  <th>
-                    <button
-                      type="button"
-                      className="sort-button"
+                      Price Volatility <span className="sarr">{getSortIndicator('price_volatility')}</span>
+                    </th>
+                    <th
+                      className={orderBy === 'tvl_usd' ? 'sort-on' : ''}
                       onClick={() => handleSort('tvl_usd')}
                     >
-                      TVL
-                      <span
-                        className={`sort-indicator ${getSortState(
-                          'tvl_usd',
-                          orderBy,
-                          orderDir,
-                        )}`}
-                        aria-hidden="true"
-                      />
-                    </button>
-                  </th>
-                  <th>
-                    <button
-                      type="button"
-                      className="sort-button"
+                      TVL <span className="sarr">{getSortIndicator('tvl_usd')}</span>
+                    </th>
+                    <th
+                      className={`${columnVisibility['col-corr'] ? '' : 'hidden-col'} ${orderBy === 'correlation' ? 'sort-on' : ''}`.trim()}
                       onClick={() => handleSort('correlation')}
                     >
-                      Correlation
-                      <span
-                        className={`sort-indicator ${getSortState(
-                          'correlation',
-                          orderBy,
-                          orderDir,
-                        )}`}
-                        aria-hidden="true"
-                      />
-                    </button>
-                  </th>
-                  <th>
-                    <button
-                      type="button"
-                      className="sort-button"
+                      Correlation <span className="sarr">{getSortIndicator('correlation')}</span>
+                    </th>
+                    <th
+                      className={`${columnVisibility['col-fees'] ? '' : 'hidden-col'} ${orderBy === 'avg_daily_fees_usd' ? 'sort-on' : ''}`.trim()}
                       onClick={() => handleSort('avg_daily_fees_usd')}
                     >
-                      AVG Daily Fees
-                      <span
-                        className={`sort-indicator ${getSortState(
-                          'avg_daily_fees_usd',
-                          orderBy,
-                          orderDir,
-                        )}`}
-                        aria-hidden="true"
-                      />
-                    </button>
-                  </th>
-                  <th>
-                    <button
-                      type="button"
-                      className="sort-button"
+                      Avg Daily Fees <span className="sarr">{getSortIndicator('avg_daily_fees_usd')}</span>
+                    </th>
+                    <th
+                      className={`${columnVisibility['col-feespc'] ? '' : 'hidden-col'} ${orderBy === 'daily_fees_tvl_pct' ? 'sort-on' : ''}`.trim()}
                       onClick={() => handleSort('daily_fees_tvl_pct')}
                     >
-                      Daily Fees/TVL
-                      <span
-                        className={`sort-indicator ${getSortState(
-                          'daily_fees_tvl_pct',
-                          orderBy,
-                          orderDir,
-                        )}`}
-                        aria-hidden="true"
-                      />
-                    </button>
-                  </th>
-                  <th>
-                    <button
-                      type="button"
-                      className="sort-button"
+                      Fees/TVL <span className="sarr">{getSortIndicator('daily_fees_tvl_pct')}</span>
+                    </th>
+                    <th
+                      className={`${columnVisibility['col-vol2'] ? '' : 'hidden-col'} ${orderBy === 'avg_daily_volume_usd' ? 'sort-on' : ''}`.trim()}
                       onClick={() => handleSort('avg_daily_volume_usd')}
                     >
-                      AVG Daily Volume
-                      <span
-                        className={`sort-indicator ${getSortState(
-                          'avg_daily_volume_usd',
-                          orderBy,
-                          orderDir,
-                        )}`}
-                        aria-hidden="true"
-                      />
-                    </button>
-                  </th>
-                  <th>
-                    <button
-                      type="button"
-                      className="sort-button"
+                      Avg Daily Vol <span className="sarr">{getSortIndicator('avg_daily_volume_usd')}</span>
+                    </th>
+                    <th
+                      className={`${columnVisibility['col-vol'] ? '' : 'hidden-col'} ${orderBy === 'daily_volume_tvl_pct' ? 'sort-on' : ''}`.trim()}
                       onClick={() => handleSort('daily_volume_tvl_pct')}
                     >
-                      Daily Volume/TVL
-                      <span
-                        className={`sort-indicator ${getSortState(
-                          'daily_volume_tvl_pct',
-                          orderBy,
-                          orderDir,
-                        )}`}
-                        aria-hidden="true"
-                      />
-                    </button>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((pool: DiscoverPool) => {
-                  const poolUrl = getPoolUrl(pool)
-                  return (
-                    <tr key={pool.pool_id}>
-                      <td className="pool-name">
-                        <strong>{pool.pool_name}</strong>
-                      </td>
-                      <td className="fee-tier-cell">
-                        <div className="fee-tier-content">
-                          <span>{formatFeeTier(pool.fee_tier)}</span>
-                          {poolUrl ? (
-                            <a
-                              className="fee-tier-link"
-                              href={poolUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              aria-label="Open pool on exchange"
-                            >
-                              <svg viewBox="0 0 24 24" aria-hidden="true">
-                                <path
-                                  d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42 9.3-9.29H14V3zm-9 4h6v2H7v8h8v-4h2v6H5V7z"
-                                  fill="currentColor"
-                                />
-                              </svg>
-                            </a>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td>{formatPercent(pool.average_apr)}</td>
-                      <td>{formatPercent(pool.price_volatility)}</td>
-                      <td>{formatCurrency(pool.tvl_usd)}</td>
-                      <td>{formatNumber(pool.correlation)}</td>
-                      <td>{formatCurrency(pool.avg_daily_fees_usd)}</td>
-                      <td>{formatPercent(pool.daily_fees_tvl_pct)}</td>
-                      <td>{formatCurrency(pool.avg_daily_volume_usd)}</td>
-                      <td>{formatPercent(pool.daily_volume_tvl_pct)}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+                      Vol/TVL <span className="sarr">{getSortIndicator('daily_volume_tvl_pct')}</span>
+                    </th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleRows.map((pool) => {
+                    const isFavorite = favorites.has(pool.pool_id)
+                    const [token0Symbol, token1Symbol] = getPoolTokenSymbols(pool)
+                    const detailsHref = getPoolDetailsHref(pool)
+                    const simulateHref = detailsHref || '/simulate'
+                    const hasDirectSimulationRoute = Boolean(detailsHref)
 
-        <div className="pagination">
-          <button type="button" onClick={() => handlePageChange(page - 1)} disabled={page <= 1}>
-            Previous
-          </button>
-          <div className="page-numbers">
-            {[1, 2, 3].filter((value) => value <= totalPages).map((value) => (
-              <button
-                key={value}
-                type="button"
-                className={page === value ? 'active' : ''}
-                onClick={() => handlePageChange(value)}
-              >
-                {value}
-              </button>
-            ))}
-            {totalPages > 4 && <span className="ellipsis">...</span>}
-            {totalPages > 3 && (
-              <button
-                type="button"
-                className={page === totalPages ? 'active' : ''}
-                onClick={() => handlePageChange(totalPages)}
-              >
-                {totalPages}
-              </button>
+                    return (
+                      <tr key={pool.pool_id}>
+                        <td>
+                          <button
+                            type="button"
+                            className={`fav-btn${isFavorite ? ' on' : ''}`}
+                            aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                            onClick={() => toggleFavorite(pool.pool_id)}
+                          >
+                            {isFavorite ? '★' : '☆'}
+                          </button>
+                        </td>
+                        <td>
+                          <div className="pool-cell">
+                            <div className="tikons" aria-hidden="true">
+                              <div className={`tikon ${getTokenClass(token0Symbol)}`}>
+                                {pool.token0_icon_url ? (
+                                  <img src={pool.token0_icon_url} alt="" loading="lazy" />
+                                ) : (
+                                  token0Symbol.slice(0, 1).toUpperCase()
+                                )}
+                              </div>
+                              <div className={`tikon ${getTokenClass(token1Symbol)}`}>
+                                {pool.token1_icon_url ? (
+                                  <img src={pool.token1_icon_url} alt="" loading="lazy" />
+                                ) : (
+                                  token1Symbol.slice(0, 1).toUpperCase()
+                                )}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="bold">{pool.pool_name || `${token0Symbol} / ${token1Symbol}`}</div>
+                              <div className="dim small">{pool.exchange ?? '--'} · {pool.network ?? '--'}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="apr-v">{formatPercent(pool.average_apr)}</td>
+                        <td className="vol-v">{formatPercent(pool.price_volatility)}</td>
+                        <td className="tvl-v">{formatCurrency(pool.tvl_usd)}</td>
+                        <td className={columnVisibility['col-corr'] ? '' : 'hidden-col'}>
+                          {formatNumber(pool.correlation)}
+                        </td>
+                        <td className={columnVisibility['col-fees'] ? '' : 'hidden-col'}>
+                          {formatCurrency(pool.avg_daily_fees_usd)}
+                        </td>
+                        <td className={columnVisibility['col-feespc'] ? '' : 'hidden-col'}>
+                          {formatPercent(pool.daily_fees_tvl_pct)}
+                        </td>
+                        <td className={columnVisibility['col-vol2'] ? '' : 'hidden-col'}>
+                          {formatCurrency(pool.avg_daily_volume_usd)}
+                        </td>
+                        <td className={columnVisibility['col-vol'] ? '' : 'hidden-col'}>
+                          {formatPercent(pool.daily_volume_tvl_pct)}
+                        </td>
+                        <td>
+                          <Link
+                            className={`row-act-btn${hasDirectSimulationRoute ? '' : ' row-act-btn-fallback'}`}
+                            to={simulateHref}
+                            aria-label={
+                              hasDirectSimulationRoute
+                                ? 'Open simulation for this pool'
+                                : 'Open simulation page'
+                            }
+                          >
+                            Simulate →
+                          </Link>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => handlePageChange(page + 1)}
-            disabled={page >= totalPages}
-          >
-            Next
-          </button>
+
+          <div className="discover-pagination-wrap">
+            <div className="pag">
+              <button
+                type="button"
+                className="pgb"
+                onClick={() => handlePageChange(page - 1)}
+                disabled={page <= 1}
+              >
+                ‹
+              </button>
+
+              {visiblePages.map((visiblePage, index) => {
+                const previousPage = visiblePages[index - 1]
+                const shouldRenderGap = previousPage !== undefined && visiblePage - previousPage > 1
+
+                return (
+                  <div key={visiblePage} className="pag-item">
+                    {shouldRenderGap ? <span className="dim pag-gap">…</span> : null}
+                    <button
+                      type="button"
+                      className={`pgb${page === visiblePage ? ' on' : ''}`}
+                      onClick={() => handlePageChange(visiblePage)}
+                    >
+                      {visiblePage}
+                    </button>
+                  </div>
+                )
+              })}
+
+              <button
+                type="button"
+                className="pgb"
+                onClick={() => handlePageChange(page + 1)}
+                disabled={page >= totalPages}
+              >
+                ›
+              </button>
+
+              <div className="sel-wrap discover-page-size-wrap">
+                <select
+                  className="inp sel discover-page-size"
+                  value={pageSize}
+                  onChange={(event) => {
+                    setPageSize(Number(event.target.value))
+                    setPage(1)
+                    setStatus('loading')
+                    setError('')
+                  }}
+                >
+                  <option value={10}>10/page</option>
+                  <option value={25}>25/page</option>
+                  <option value={50}>50/page</option>
+                  <option value={100}>100/page</option>
+                </select>
+              </div>
+            </div>
+          </div>
         </div>
-      </section>
+      </div>
     </main>
   )
 }

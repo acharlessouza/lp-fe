@@ -1,10 +1,24 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
-const RAW_BEARER_TOKEN = import.meta.env.VITE_API_BEARER_TOKEN ?? ''
-const API_BEARER_TOKEN =
-  RAW_BEARER_TOKEN && RAW_BEARER_TOKEN !== 'seu_token_aqui' ? RAW_BEARER_TOKEN : 'dev-token'
+const REFRESH_ENDPOINT = '/v1/auth/refresh'
+let accessToken: string | null = null
+let onUnauthorizedHandler: (() => void) | null = null
+let hasTriggeredUnauthorized = false
+let refreshRequest: Promise<string | null> | null = null
+
+export const setAccessToken = (token: string | null) => {
+  accessToken = token
+}
+
+export const getAccessToken = () => accessToken
+
+export const setOnUnauthorized = (handler: (() => void) | null) => {
+  onUnauthorizedHandler = handler
+}
 
 type ApiError = {
   message?: string
+  error?: string
+  detail?: unknown
 }
 
 type FetchOptions = {
@@ -12,16 +26,96 @@ type FetchOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: unknown
   headers?: Record<string, string>
+  authenticated?: boolean
+  retryAfterRefresh?: boolean
 }
 
-async function fetchJson<T>(path: string, options: FetchOptions = {}): Promise<T> {
-  const { signal, method = 'GET', body, headers: customHeaders } = options
+const notifyUnauthorized = () => {
+  if (!onUnauthorizedHandler || hasTriggeredUnauthorized) {
+    return
+  }
+  hasTriggeredUnauthorized = true
+  onUnauthorizedHandler()
+  queueMicrotask(() => {
+    hasTriggeredUnauthorized = false
+  })
+}
+
+const parseResponseBody = async <T>(response: Response): Promise<T> => {
+  if (response.status === 204) {
+    return undefined as T
+  }
+  const text = await response.text()
+  if (!text.trim()) {
+    return undefined as T
+  }
+  return JSON.parse(text) as T
+}
+
+const isAbortError = (error: unknown) => {
+  if (error instanceof DOMException) {
+    return error.name === 'AbortError'
+  }
+  if (!error || typeof error !== 'object') {
+    return false
+  }
+  const candidate = error as { name?: unknown }
+  return candidate.name === 'AbortError'
+}
+
+const refreshAccessToken = async (): Promise<string | null> => {
+  if (refreshRequest) {
+    return refreshRequest
+  }
+
+  refreshRequest = (async () => {
+    try {
+      const response = await fetch(`${API_BASE}${REFRESH_ENDPOINT}`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          Accept: 'application/json',
+        },
+      })
+      if (!response.ok) {
+        return null
+      }
+
+      const payload = await parseResponseBody<{ access_token?: unknown }>(response)
+      const token =
+        typeof payload?.access_token === 'string' && payload.access_token.trim()
+          ? payload.access_token.trim()
+          : null
+      if (!token) {
+        return null
+      }
+      accessToken = token
+      return token
+    } catch {
+      return null
+    } finally {
+      refreshRequest = null
+    }
+  })()
+
+  return refreshRequest
+}
+
+export async function fetchJson<T>(path: string, options: FetchOptions = {}): Promise<T> {
+  const {
+    signal,
+    method = 'GET',
+    body,
+    headers: customHeaders,
+    authenticated = true,
+    retryAfterRefresh = false,
+  } = options
   const headers: Record<string, string> = {
     ...(customHeaders ?? {}),
   }
 
-  if (API_BEARER_TOKEN) {
-    headers.Authorization = `Bearer ${API_BEARER_TOKEN}`
+  if (authenticated && accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`
   }
 
   let payload: string | undefined
@@ -31,36 +125,116 @@ async function fetchJson<T>(path: string, options: FetchOptions = {}): Promise<T
     payload = JSON.stringify(body)
   }
 
-  const response = await fetch(`${API_BASE}${path}`, {
-    signal,
-    method,
-    headers,
-    body: payload,
-  })
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      signal,
+      method,
+      headers,
+      body: payload,
+      credentials: 'include',
+    })
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw error
+    }
+    throw new Error('Unable to reach the server.')
+  }
+
+  const isAuthEndpoint = path.startsWith('/v1/auth/')
+  if (response.status === 401 && authenticated && !isAuthEndpoint) {
+    if (!retryAfterRefresh) {
+      const nextAccessToken = await refreshAccessToken()
+      if (nextAccessToken) {
+        return fetchJson<T>(path, {
+          ...options,
+          retryAfterRefresh: true,
+        })
+      }
+    }
+    notifyUnauthorized()
+  }
+
   if (!response.ok) {
     const message = await getErrorMessage(response)
     throw new Error(message)
   }
-  return (await response.json()) as T
+  return parseResponseBody<T>(response)
 }
 
 async function getErrorMessage(response: Response) {
+  const extractMessage = (value: unknown): string | null => {
+    if (!value || typeof value !== 'object') {
+      return null
+    }
+
+    const candidate = value as ApiError
+
+    if (typeof candidate.message === 'string' && candidate.message.trim()) {
+      return candidate.message.trim()
+    }
+
+    if (typeof candidate.error === 'string' && candidate.error.trim()) {
+      return candidate.error.trim()
+    }
+
+    if (typeof candidate.detail === 'string' && candidate.detail.trim()) {
+      return candidate.detail.trim()
+    }
+
+    if (Array.isArray(candidate.detail)) {
+      const messages = candidate.detail
+        .map((item) => {
+          if (typeof item === 'string') {
+            return item.trim()
+          }
+          if (item && typeof item === 'object') {
+            const obj = item as { msg?: unknown; message?: unknown }
+            if (typeof obj.msg === 'string' && obj.msg.trim()) {
+              return obj.msg.trim()
+            }
+            if (typeof obj.message === 'string' && obj.message.trim()) {
+              return obj.message.trim()
+            }
+          }
+          return ''
+        })
+        .filter(Boolean)
+      if (messages.length) {
+        return messages.join('; ')
+      }
+    }
+
+    if (candidate.detail && typeof candidate.detail === 'object') {
+      const detail = candidate.detail as { msg?: unknown; message?: unknown }
+      if (typeof detail.msg === 'string' && detail.msg.trim()) {
+        return detail.msg.trim()
+      }
+      if (typeof detail.message === 'string' && detail.message.trim()) {
+        return detail.message.trim()
+      }
+    }
+
+    return null
+  }
+
   try {
     const text = await response.text()
     if (text) {
       try {
-        const data = JSON.parse(text) as ApiError
-        if (data?.message) {
-          return data.message
+        const data = JSON.parse(text) as unknown
+        const extracted = extractMessage(data)
+        if (extracted) {
+          return extracted
         }
       } catch {
         return text
       }
     }
   } catch {
-    return `Unable to reach ${response.url}`
+    return 'Unable to complete request.'
   }
-  return `Unable to reach ${response.url}`
+  return 'Unable to complete request.'
 }
 
 export type Exchange = {
@@ -249,6 +423,14 @@ export type DiscoverPool = {
   pool_address?: string
   network?: string
   exchange?: string
+  dex_id?: number
+  chain_id?: number
+  token0_address?: string
+  token1_address?: string
+  token0_symbol?: string
+  token1_symbol?: string
+  token0_icon_url?: string | null
+  token1_icon_url?: string | null
   fee_tier: number | string
   average_apr: number | string
   price_volatility: number | string | null
@@ -575,7 +757,7 @@ export const getDiscoverPools = (
     search.set('order_dir', params.order_dir)
   }
   const query = search.toString()
-  return fetchJson<DiscoverPoolsResponse>(`/v1/discover/pools${query ? `?${query}` : ''}`, {
+  return fetchJson<DiscoverPoolsResponse>(`/v1/radar/pools${query ? `?${query}` : ''}`, {
     signal,
   })
 }
