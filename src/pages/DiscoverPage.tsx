@@ -6,7 +6,7 @@ import type {
   Exchange,
   Network,
 } from '../services/api'
-import { getDiscoverPools, getExchanges, getNetworks } from '../services/api'
+import { favoritePool, getDiscoverPools, getExchanges, getNetworks, unfavoritePool } from '../services/api'
 import './DiscoverPage.css'
 
 type LoadStatus = 'idle' | 'loading' | 'success' | 'error'
@@ -35,8 +35,6 @@ const DEFAULT_COLUMN_VISIBILITY: ColumnVisibility = {
   'col-corr': true,
   'col-vol2': true,
 }
-
-const FAVORITES_STORAGE_KEY = 'pool_atlas_discover_favorites'
 
 const OPTIONAL_COLUMNS: Array<{ id: OptionalColumnKey; label: string }> = [
   { id: 'col-vol', label: 'Daily Vol/TVL' },
@@ -72,30 +70,6 @@ const formatNumber = (value: number | string | null, digits = 2) => {
     return '--'
   }
   return parsed.toFixed(digits)
-}
-
-const readFavorites = () => {
-  if (typeof window === 'undefined') {
-    return new Set<number>()
-  }
-
-  try {
-    const raw = window.localStorage.getItem(FAVORITES_STORAGE_KEY)
-    if (!raw) {
-      return new Set<number>()
-    }
-    const parsed = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed)) {
-      return new Set<number>()
-    }
-    return new Set(
-      parsed
-        .map((value) => Number(value))
-        .filter((value) => Number.isFinite(value)),
-    )
-  } catch {
-    return new Set<number>()
-  }
 }
 
 const getSortLabel = (orderBy: string, orderDir: 'asc' | 'desc') => {
@@ -139,6 +113,18 @@ const getPoolTokenSymbols = (pool: DiscoverPool) => {
 const parseOptionalNumber = (value: unknown) => {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : null
+}
+
+const getFavoritePoolKey = (pool: DiscoverPool) => {
+  const poolAddress = pool.pool_address?.trim()
+  const chainId = parseOptionalNumber(pool.chain_id)
+  const exchangeId = parseOptionalNumber(pool.dex_id)
+
+  if (!poolAddress || !chainId || !exchangeId) {
+    return ''
+  }
+
+  return `${poolAddress}|${chainId}|${exchangeId}`
 }
 
 const getTokenClass = (symbol: string) => {
@@ -196,19 +182,16 @@ function DiscoverPage() {
   const [networkId, setNetworkId] = useState<number | ''>('')
 
   const [showFavorites, setShowFavorites] = useState(false)
-  const [favorites, setFavorites] = useState<Set<number>>(() => readFavorites())
+  const [topPoolsTotal, setTopPoolsTotal] = useState<number | null>(null)
+  const [favoritePoolsTotal, setFavoritePoolsTotal] = useState<number | null>(null)
+  const [favoriteError, setFavoriteError] = useState('')
+  const [favoritePendingKeys, setFavoritePendingKeys] = useState<Set<string>>(() => new Set())
+  const [refreshKey, setRefreshKey] = useState(0)
   const [columnVisibility, setColumnVisibility] =
     useState<ColumnVisibility>(DEFAULT_COLUMN_VISIBILITY)
   const [isColumnMenuOpen, setIsColumnMenuOpen] = useState(false)
 
   const columnMenuRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return
-    }
-    window.localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(Array.from(favorites)))
-  }, [favorites])
 
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
@@ -228,23 +211,33 @@ function DiscoverPage() {
 
   useEffect(() => {
     const controller = new AbortController()
+    const requestParams = {
+      network_id: networkId ? Number(networkId) : undefined,
+      exchange_id: exchangeId ? Number(exchangeId) : undefined,
+      token_symbol: searchQuery.trim() || undefined,
+      timeframe_days: timeframeDays,
+      page,
+      page_size: pageSize,
+      order_by: orderBy,
+      order_dir: orderDir,
+      favorites_only: showFavorites,
+    }
+
+    setStatus('loading')
+    setFavoriteError('')
 
     getDiscoverPools(
-      {
-        network_id: networkId ? Number(networkId) : undefined,
-        exchange_id: exchangeId ? Number(exchangeId) : undefined,
-        token_symbol: searchQuery.trim() || undefined,
-        timeframe_days: timeframeDays,
-        page,
-        page_size: pageSize,
-        order_by: orderBy,
-        order_dir: orderDir,
-      },
+      requestParams,
       controller.signal,
     )
       .then((response) => {
         setData(response)
         setStatus('success')
+        if (showFavorites) {
+          setFavoritePoolsTotal(response.total)
+        } else {
+          setTopPoolsTotal(response.total)
+        }
       })
       .catch((fetchError) => {
         if (fetchError instanceof DOMException && fetchError.name === 'AbortError') {
@@ -255,7 +248,18 @@ function DiscoverPage() {
       })
 
     return () => controller.abort()
-  }, [exchangeId, networkId, orderBy, orderDir, page, pageSize, searchQuery, timeframeDays])
+  }, [
+    exchangeId,
+    networkId,
+    orderBy,
+    orderDir,
+    page,
+    pageSize,
+    refreshKey,
+    searchQuery,
+    showFavorites,
+    timeframeDays,
+  ])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -312,16 +316,57 @@ function DiscoverPage() {
     return () => controller.abort()
   }, [exchangeId])
 
+  useEffect(() => {
+    const controller = new AbortController()
+
+    getDiscoverPools(
+      {
+        network_id: networkId ? Number(networkId) : undefined,
+        exchange_id: exchangeId ? Number(exchangeId) : undefined,
+        token_symbol: searchQuery.trim() || undefined,
+        timeframe_days: timeframeDays,
+        page: 1,
+        page_size: 1,
+        favorites_only: !showFavorites,
+      },
+      controller.signal,
+    )
+      .then((response) => {
+        if (showFavorites) {
+          setTopPoolsTotal(response.total)
+          return
+        }
+        setFavoritePoolsTotal(response.total)
+      })
+      .catch((fetchError) => {
+        if (fetchError instanceof DOMException && fetchError.name === 'AbortError') {
+          return
+        }
+        if (showFavorites) {
+          setTopPoolsTotal(null)
+          return
+        }
+        setFavoritePoolsTotal(null)
+      })
+
+    return () => controller.abort()
+  }, [exchangeId, networkId, refreshKey, searchQuery, showFavorites, timeframeDays])
+
   const rows = data?.data ?? []
 
   const totalPages = useMemo(() => {
-    if (!data?.total || data.total <= 0) {
+    if (status !== 'success' || !data?.total || data.total <= 0) {
       return 1
     }
     return Math.max(1, Math.ceil(data.total / pageSize))
-  }, [data?.total, pageSize])
+  }, [data?.total, pageSize, status])
 
-  const topPoolsCount = data?.total ?? rows.length
+  const topPoolsCount =
+    !showFavorites && status === 'success' ? (data?.total ?? topPoolsTotal ?? rows.length) : topPoolsTotal
+  const favoriteCount =
+    showFavorites && status === 'success'
+      ? (data?.total ?? favoritePoolsTotal ?? rows.length)
+      : favoritePoolsTotal
 
   const searchedRows = useMemo(() => {
     const normalized = searchQuery.trim().toLowerCase()
@@ -341,12 +386,7 @@ function DiscoverPage() {
     })
   }, [rows, searchQuery])
 
-  const visibleRows = useMemo(() => {
-    if (!showFavorites) {
-      return searchedRows
-    }
-    return searchedRows.filter((pool) => favorites.has(pool.pool_id))
-  }, [favorites, searchedRows, showFavorites])
+  const visibleRows = status === 'success' ? searchedRows : []
 
   const currentExchange = useMemo(
     () => exchanges.find((exchange) => exchange.id === exchangeId) ?? null,
@@ -405,18 +445,6 @@ function DiscoverPage() {
     setError('')
   }
 
-  const toggleFavorite = (poolId: number) => {
-    setFavorites((current) => {
-      const next = new Set(current)
-      if (next.has(poolId)) {
-        next.delete(poolId)
-      } else {
-        next.add(poolId)
-      }
-      return next
-    })
-  }
-
   const toggleColumn = (columnId: OptionalColumnKey) => {
     setColumnVisibility((current) => ({
       ...current,
@@ -434,6 +462,19 @@ function DiscoverPage() {
     setShowFavorites(false)
     setStatus('loading')
     setError('')
+    setFavoriteError('')
+  }
+
+  const handleFavoritesTabChange = (nextShowFavorites: boolean) => {
+    if (nextShowFavorites === showFavorites) {
+      return
+    }
+
+    setShowFavorites(nextShowFavorites)
+    setPage(1)
+    setStatus('loading')
+    setError('')
+    setFavoriteError('')
   }
 
   const getPoolDetailsHref = (pool: DiscoverPool) => {
@@ -483,6 +524,82 @@ function DiscoverPage() {
     return `/simulate/pools/${encodeURIComponent(pool.pool_address)}?${query.toString()}`
   }
 
+  const handleToggleFavorite = async (pool: DiscoverPool) => {
+    const poolAddress = pool.pool_address?.trim()
+    const chainId = parseOptionalNumber(pool.chain_id)
+    const exchangeIdValue = parseOptionalNumber(pool.dex_id)
+    const favoriteKey = getFavoritePoolKey(pool)
+
+    if (!poolAddress || !chainId || !exchangeIdValue || !favoriteKey) {
+      return
+    }
+
+    if (favoritePendingKeys.has(favoriteKey)) {
+      return
+    }
+
+    setFavoriteError('')
+    setFavoritePendingKeys((current) => {
+      const next = new Set(current)
+      next.add(favoriteKey)
+      return next
+    })
+
+    try {
+      const response = pool.isFavorited
+        ? await unfavoritePool(poolAddress, chainId, exchangeIdValue)
+        : await favoritePool(poolAddress, chainId, exchangeIdValue)
+
+      const nextIsFavorited = response.isFavorited
+      const favoriteDelta = nextIsFavorited === pool.isFavorited ? 0 : nextIsFavorited ? 1 : -1
+      const removingFromFavoritesView = showFavorites && pool.isFavorited && !nextIsFavorited
+      const removedLastVisibleRow = removingFromFavoritesView && visibleRows.length === 1 && page > 1
+
+      setData((current) => {
+        if (!current) {
+          return current
+        }
+
+        const nextRows = removingFromFavoritesView
+          ? current.data.filter((row) => getFavoritePoolKey(row) !== favoriteKey)
+          : current.data.map((row) =>
+              getFavoritePoolKey(row) === favoriteKey ? { ...row, isFavorited: nextIsFavorited } : row,
+            )
+
+        return {
+          ...current,
+          total: removingFromFavoritesView ? Math.max(0, current.total - 1) : current.total,
+          data: nextRows,
+        }
+      })
+
+      if (favoriteDelta !== 0) {
+        setFavoritePoolsTotal((current) =>
+          current === null ? current : Math.max(0, current + favoriteDelta),
+        )
+      }
+
+      if (removedLastVisibleRow) {
+        setPage((current) => Math.max(1, current - 1))
+      }
+
+      setRefreshKey((current) => current + 1)
+    } catch (actionError) {
+      setFavoriteError(
+        actionError instanceof Error ? actionError.message : 'Unable to update favorite.',
+      )
+    } finally {
+      setFavoritePendingKeys((current) => {
+        const next = new Set(current)
+        next.delete(favoriteKey)
+        return next
+      })
+    }
+  }
+
+  const topPoolsCountLabel = topPoolsCount ?? '...'
+  const favoriteCountLabel = favoriteCount ?? '...'
+
   return (
     <main className="discover-page">
       <div className="discover-wrap">
@@ -502,7 +619,9 @@ function DiscoverPage() {
               ))}
             </div>
           </div>
-          <span className="dim small mono">{topPoolsCount} pools</span>
+          <span className="dim small mono">
+            {showFavorites ? favoriteCountLabel : topPoolsCountLabel} pools
+          </span>
         </div>
 
         <div className="flex aic g8 mb16 discover-filters-row">
@@ -618,22 +737,24 @@ function DiscoverPage() {
           </div>
         )}
 
+        {favoriteError && <div className="discover-state error mb16">{favoriteError}</div>}
+
         <div className="card discover-table-card">
           <div className="discover-table-toolbar">
             <div className="flex g8 aic">
               <button
                 type="button"
                 className={`tb${showFavorites ? '' : ' on'}`}
-                onClick={() => setShowFavorites(false)}
+                onClick={() => handleFavoritesTabChange(false)}
               >
-                Top Pools (<span>{topPoolsCount}</span>)
+                Top Pools (<span>{topPoolsCountLabel}</span>)
               </button>
               <button
                 type="button"
                 className={`tb${showFavorites ? ' on' : ''}`}
-                onClick={() => setShowFavorites(true)}
+                onClick={() => handleFavoritesTabChange(true)}
               >
-                ⭐ Favorites ({favorites.size})
+                ⭐ Favorites (<span>{favoriteCountLabel}</span>)
               </button>
             </div>
 
@@ -734,7 +855,9 @@ function DiscoverPage() {
                 </thead>
                 <tbody>
                   {visibleRows.map((pool) => {
-                    const isFavorite = favorites.has(pool.pool_id)
+                    const isFavorite = pool.isFavorited
+                    const favoriteKey = getFavoritePoolKey(pool)
+                    const isFavoritePending = favoritePendingKeys.has(favoriteKey)
                     const [token0Symbol, token1Symbol] = getPoolTokenSymbols(pool)
                     const detailsHref = getPoolDetailsHref(pool)
                     const simulateHref = detailsHref || '/simulate'
@@ -747,7 +870,10 @@ function DiscoverPage() {
                             type="button"
                             className={`fav-btn${isFavorite ? ' on' : ''}`}
                             aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-                            onClick={() => toggleFavorite(pool.pool_id)}
+                            onClick={() => {
+                              void handleToggleFavorite(pool)
+                            }}
+                            disabled={isFavoritePending}
                           >
                             {isFavorite ? '★' : '☆'}
                           </button>

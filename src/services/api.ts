@@ -509,6 +509,7 @@ export type DiscoverPool = {
   daily_fees_tvl_pct: number | string
   avg_daily_volume_usd: number | string
   daily_volume_tvl_pct: number | string
+  isFavorited: boolean
 }
 
 export type DiscoverPoolsResponse = {
@@ -864,6 +865,7 @@ export const getDiscoverPools = (
     page_size?: number
     order_by?: string
     order_dir?: 'asc' | 'desc'
+    favorites_only?: boolean
   },
   signal?: AbortSignal,
 ) => {
@@ -891,6 +893,9 @@ export const getDiscoverPools = (
   }
   if (params.order_dir) {
     search.set('order_dir', params.order_dir)
+  }
+  if (typeof params.favorites_only === 'boolean') {
+    search.set('favorites_only', String(params.favorites_only))
   }
   const query = search.toString()
   return fetchJson<DiscoverPoolsResponse>(`/v1/radar/pools${query ? `?${query}` : ''}`, {
