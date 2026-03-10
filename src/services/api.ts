@@ -311,6 +311,26 @@ export type Pool = {
   [key: string]: unknown
 }
 
+export type MarketMetric = {
+  value: number
+  displayValue: string
+  updatedAt: string
+  source: string
+}
+
+export type MarketSummaryResponse = {
+  data: {
+    defiMarketCap: MarketMetric
+    dexVolume24h: MarketMetric
+    stablecoinMarketCap: MarketMetric
+    dexFees24h: MarketMetric
+  }
+  meta: {
+    updatedAt: string
+    isStale: boolean
+  }
+}
+
 export type PoolDetail = {
   id: string
   dex_key: string
@@ -528,6 +548,9 @@ export type SimulateAprV2Payload = {
 
 export const getExchanges = (signal?: AbortSignal) =>
   fetchJson<Exchange[]>('/v1/exchanges', { signal })
+
+export const getMarketSummary = (signal?: AbortSignal) =>
+  fetchJson<MarketSummaryResponse>('/v1/market-summary', { signal })
 
 export const getNetworks = (exchangeId: number, signal?: AbortSignal) =>
   fetchJson<Network[]>(`/v1/exchanges/${exchangeId}/networks`, { signal })

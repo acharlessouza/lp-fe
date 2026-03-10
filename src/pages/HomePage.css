@@ -127,6 +127,27 @@
   flex-wrap: wrap;
 }
 
+.home-stats-wrap {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.home-stats-notice {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: var(--bg2);
+  color: var(--text2);
+  font-size: 12px;
+}
+
+.home-stats-notice-error {
+  border-color: rgba(255, 87, 87, 0.22);
+  background: rgba(255, 87, 87, 0.06);
+  color: var(--red);
+}
+
 .home-stats {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -135,13 +156,15 @@
   border: 1px solid var(--border);
   border-radius: var(--rl);
   overflow: hidden;
-  margin: 0 auto;
-  max-width: 900px;
 }
 
 .home-stat {
   background: var(--bg2);
   padding: 20px 22px;
+  min-height: 110px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .home-stat-value {
@@ -149,14 +172,60 @@
   font-weight: 800;
   font-size: 24px;
   color: var(--text);
+  margin-top: 8px;
 }
 
-.home-stat-label {
+.home-stat-title {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text3);
-  margin-top: 3px;
+}
+
+.home-stat-meta {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text2);
+}
+
+.home-stat-skeleton {
+  position: relative;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.home-stat-skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.12), transparent);
+  animation: home-skeleton 1.2s ease-in-out infinite;
+}
+
+.home-stat-skeleton-title {
+  width: 58%;
+  height: 10px;
+}
+
+.home-stat-skeleton-value {
+  width: 72%;
+  height: 28px;
+  border-radius: 10px;
+  margin-top: 10px;
+}
+
+.home-stat-skeleton-meta {
+  width: 46%;
+  height: 10px;
+  margin-top: 10px;
+}
+
+@keyframes home-skeleton {
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 .home-features-wrap {
@@ -245,9 +314,12 @@
     padding: 0 16px;
   }
 
+  .home-stats-wrap {
+    margin: 0 16px;
+  }
+
   .home-stats {
     border-radius: 10px;
-    margin: 0 16px;
     grid-template-columns: 1fr;
   }
 }

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useMarketSummary } from '../hooks/useMarketSummary'
 import type { Exchange, Network, Pool, Token } from '../services/api'
 import { getExchanges, getNetworks, getPoolByAddress, getPools, getTokens } from '../services/api'
 import './SimulatePage.css'
@@ -7,6 +8,13 @@ import './SimulatePage.css'
 type Mode = 'pair' | 'address'
 
 type LoadStatus = 'idle' | 'loading' | 'success' | 'error'
+
+const MARKET_SUMMARY_ITEMS = [
+  { key: 'defiMarketCap', title: 'DeFi Market Cap' },
+  { key: 'dexVolume24h', title: 'DEX Volume (24h)' },
+  { key: 'stablecoinMarketCap', title: 'Stablecoin Market Cap' },
+  { key: 'dexFees24h', title: 'DEX Fees (24h)' },
+] as const
 
 const shortAddress = (address: string) => {
   if (!address) {
@@ -192,44 +200,29 @@ const formatFeeTier = (pool: Pool) => {
   return `Fee ${percentage.toFixed(2)}%`
 }
 
-const readPoolNumber = (pool: Pool, keys: string[]) => {
-  for (const key of keys) {
-    const value = pool[key]
-    const parsed = Number(value)
-    if (Number.isFinite(parsed)) {
-      return parsed
-    }
-  }
-  return null
-}
-
-const formatPercentValue = (value: number | null) => {
-  if (!Number.isFinite(value)) {
-    return '--'
-  }
-  return `${(value as number).toFixed(2)}%`
-}
-
-const getPoolApr = (pool: Pool) => {
-  const directApr = readPoolNumber(pool, [
-    'apr',
-    'average_apr',
-    'estimated_apr',
-    'net_apr',
-    'fee_apr',
-  ])
-  if (Number.isFinite(directApr)) {
-    return directApr as number
+const getUpdatedLabel = (updatedAt: string, now: number) => {
+  const timestamp = new Date(updatedAt).getTime()
+  if (!Number.isFinite(timestamp)) {
+    return 'Updated recently'
   }
 
-  // Fallback for pool list payloads that expose daily fees/TVL instead of APR.
-  // daily_fees_tvl_pct is interpreted as daily percent; APR ~= daily percent * 365.
-  const dailyFeesTvlPct = readPoolNumber(pool, ['daily_fees_tvl_pct'])
-  if (Number.isFinite(dailyFeesTvlPct)) {
-    return (dailyFeesTvlPct as number) * 365
+  const diffMinutes = Math.max(0, Math.floor((now - timestamp) / 60000))
+
+  if (diffMinutes < 1) {
+    return 'Updated just now'
   }
 
-  return null
+  if (diffMinutes < 60) {
+    return `Updated ${diffMinutes} min ago`
+  }
+
+  const diffHours = Math.floor(diffMinutes / 60)
+  if (diffHours < 24) {
+    return `Updated ${diffHours} hr ago`
+  }
+
+  const diffDays = Math.floor(diffHours / 24)
+  return `Updated ${diffDays} day${diffDays === 1 ? '' : 's'} ago`
 }
 
 const getPoolPairText = (
@@ -275,6 +268,8 @@ function SimulatePage() {
   const [mode, setMode] = useState<Mode>('pair')
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const { data: marketSummary, loading: marketSummaryLoading, error: marketSummaryError } =
+    useMarketSummary()
 
   const exchangeParam = searchParams.get('exchange_id')
   const networkParam = searchParams.get('network_id')
@@ -326,6 +321,7 @@ function SimulatePage() {
   const [poolsStatus, setPoolsStatus] = useState<LoadStatus>(initialPoolsStatus)
   const [poolsError, setPoolsError] = useState('')
   const addressSearchAbortRef = useRef<AbortController | null>(null)
+  const [marketNow, setMarketNow] = useState(() => Date.now())
 
   const sameToken = token0 !== '' && token0 === token1
   const trimmedPoolAddressQuery = poolAddressQuery.trim()
@@ -745,6 +741,14 @@ function SimulatePage() {
   }, [])
 
   useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setMarketNow(Date.now())
+    }, 60_000)
+
+    return () => window.clearInterval(intervalId)
+  }, [])
+
+  useEffect(() => {
     const controller = new AbortController()
 
     getExchanges(controller.signal)
@@ -885,17 +889,24 @@ function SimulatePage() {
               ? `${pools.length} pool${pools.length === 1 ? '' : 's'} found for ${selectedPairLabel}`
               : 'Matching pools will appear here.'
 
-  const topPoolAprValue = useMemo(() => {
-    const aprValues = pools
-      .map((pool) => getPoolApr(pool))
-      .filter((value): value is number => Number.isFinite(value))
-    if (aprValues.length === 0) {
-      return null
-    }
-    return Math.max(...aprValues)
-  }, [pools])
-
   const poolsReady = poolsStatus === 'success' && pools.length > 0
+  const marketCards = useMemo(
+    () =>
+      MARKET_SUMMARY_ITEMS.map((item) => {
+        const metric = marketSummary?.data[item.key]
+        return {
+          key: item.key,
+          title: item.title,
+          value: metric?.displayValue ?? '--',
+          updatedLabel: metric
+            ? getUpdatedLabel(metric.updatedAt, marketNow)
+            : marketSummaryError
+              ? 'Temporarily unavailable'
+              : 'Updated recently',
+        }
+      }),
+    [marketNow, marketSummary, marketSummaryError],
+  )
 
   return (
     <main className="simulate-page simulate-screen">
@@ -925,44 +936,36 @@ function SimulatePage() {
         </div>
       </section>
 
-      <section className="simulate-market reveal delay-1" aria-label="Market indicators">
-        <div className="market-card">
-          <div className="market-label">DeFi TVL</div>
-          <div className="market-value">$89.4B</div>
-          <div className="market-delta is-positive">+1.24% 24h</div>
-        </div>
-        <div className="market-card">
-          <div className="market-label">ETH Gas (gwei)</div>
-          <div className="market-value">
-            8.2 <span className="market-inline">Low</span>
+      <section className="simulate-market-wrap reveal delay-1" aria-label="Market indicators">
+        {marketSummaryError ? (
+          <div className="simulate-market-notice simulate-market-notice-error" role="status">
+            Market summary is temporarily unavailable. Showing fallback values.
           </div>
-          <div className="market-sub">Ideal for rebalancing</div>
-          <div className="market-bar">
-            <span style={{ width: '18%', background: 'var(--green)' }} />
+        ) : null}
+        {marketSummary?.meta.isStale ? (
+          <div className="simulate-market-notice" role="status">
+            Market data may be delayed.
           </div>
-        </div>
-        <div className="market-card">
-          <div className="market-label">ETH Dominance</div>
-          <div className="market-value">17.4%</div>
-          <div className="market-delta">-0.3% 7d</div>
-          <div className="market-bar">
-            <span className="market-bar-neutral" style={{ width: '58%' }} />
-          </div>
-        </div>
-        <div className="market-card">
-          <div className="market-label">Top Pool APR (14d)</div>
-          <div className="market-value market-accent">
-            {topPoolAprValue === null ? '--' : formatPercentValue(topPoolAprValue)}
-          </div>
-          <div className="market-sub">
-            {mode === 'address'
-              ? selectedExchange?.name && selectedNetwork?.name
-                ? `${selectedExchange.name} · ${selectedNetwork.name}`
-                : 'Search an exact pool by address'
-              : selectedToken0Label && selectedToken1Label
-              ? `${selectedPairLabel} · ${selectedExchange?.name ?? 'Exchange'}`
-              : 'Select a pair to inspect opportunities'}
-          </div>
+        ) : null}
+
+        <div className="simulate-market">
+          {marketCards.map((item) => (
+            <div className="market-card" key={item.key}>
+              {marketSummaryLoading ? (
+                <div className="market-skeleton-group" aria-hidden="true">
+                  <div className="market-skeleton market-skeleton-label" />
+                  <div className="market-skeleton market-skeleton-value" />
+                  <div className="market-skeleton market-skeleton-sub" />
+                </div>
+              ) : (
+                <>
+                  <div className="market-label">{item.title}</div>
+                  <div className="market-value">{item.value}</div>
+                  <div className="market-sub">{item.updatedLabel}</div>
+                </>
+              )}
+            </div>
+          ))}
         </div>
       </section>
 
