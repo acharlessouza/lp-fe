@@ -355,6 +355,18 @@ export type PoolDetail = {
   token1?: Token
 }
 
+export type RecentlyViewedPool = {
+  pool_address: string
+  chain_id: number
+  exchange_id: number
+  last_viewed_at: string
+  pool: PoolDetail
+}
+
+export type RecentlyViewedPoolsResponse = {
+  data: RecentlyViewedPool[]
+}
+
 export type LiquidityDistributionPoint = {
   tick: number | string
   liquidity: number | string
@@ -644,6 +656,25 @@ export const unfavoritePool = (
       signal,
     },
   )
+
+export const postPoolRecentView = (
+  poolAddress: string,
+  chainId: number,
+  exchangeId: number,
+  signal?: AbortSignal,
+) =>
+  fetchJson<void>(
+    `/v1/pools/by-address/${encodeURIComponent(
+      poolAddress,
+    )}/recent-view?chain_id=${chainId}&exchange_id=${exchangeId}`,
+    {
+      method: 'POST',
+      signal,
+    },
+  )
+
+export const getRecentlyViewedPools = (limit: number, signal?: AbortSignal) =>
+  fetchJson<RecentlyViewedPoolsResponse>(`/v1/pools/recently-viewed?limit=${limit}`, { signal })
 
 export const postLiquidityDistribution = (
   payload: {

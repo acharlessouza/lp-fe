@@ -18,6 +18,7 @@ import {
   postLiquidityDistributionDefaultRange,
   postLiquidityDistribution,
   postMatchTicks,
+  postPoolRecentView,
   postSimulateApr,
   unfavoritePool,
 } from '../services/api'
@@ -177,6 +178,26 @@ const parsePriceInput = (value: string) => {
 
 const FULL_RANGE_MIN_INPUT = '0'
 const FULL_RANGE_MAX_INPUT = '∞'
+const RECENT_VIEW_DEDUP_WINDOW_MS = 10_000
+const recentViewDispatchTimestamps = new Map<string, number>()
+
+const shouldSkipRecentViewDispatch = (key: string) => {
+  const now = Date.now()
+
+  for (const [cachedKey, timestamp] of recentViewDispatchTimestamps.entries()) {
+    if (now - timestamp >= RECENT_VIEW_DEDUP_WINDOW_MS) {
+      recentViewDispatchTimestamps.delete(cachedKey)
+    }
+  }
+
+  const lastDispatchAt = recentViewDispatchTimestamps.get(key)
+  if (typeof lastDispatchAt === 'number' && now - lastDispatchAt < RECENT_VIEW_DEDUP_WINDOW_MS) {
+    return true
+  }
+
+  recentViewDispatchTimestamps.set(key, now)
+  return false
+}
 
 const resolveRangeValue = (value: string, fallback: number | null) => {
   const parsed = parsePriceInput(value)
@@ -2072,6 +2093,7 @@ function PoolDetailPage() {
   const latestAllocateDataRef = useRef<AllocateResponse | null>(allocateData)
   const allocateResultKeyRef = useRef<string | null>(null)
   const lastAprKeyRef = useRef<string | null>(null)
+  const lastRecentViewKeyRef = useRef<string | null>(null)
   const snapshotDateRef = useRef(new Date().toISOString().slice(0, 10))
 
   const hasContext = Boolean(normalizedPoolAddress && Number.isFinite(chainId) && Number.isFinite(exchangeId))
@@ -2665,6 +2687,33 @@ function PoolDetailPage() {
     initialRangeFetchKeyRef.current = activeKey
     fetchDistribution()
   }, [activeKey, fetchDistribution, pool, showPool])
+
+  useEffect(() => {
+    if (authLoading || !isAuthenticated || !showPool || !pool || !hasContext) {
+      return
+    }
+
+    if (lastRecentViewKeyRef.current === activeKey || shouldSkipRecentViewDispatch(activeKey)) {
+      lastRecentViewKeyRef.current = activeKey
+      return
+    }
+
+    lastRecentViewKeyRef.current = activeKey
+
+    void postPoolRecentView(normalizedPoolAddress, chainId, exchangeId).catch(() => {
+      // Recent-view tracking must never block or disrupt the detail page.
+    })
+  }, [
+    activeKey,
+    authLoading,
+    chainId,
+    exchangeId,
+    hasContext,
+    isAuthenticated,
+    normalizedPoolAddress,
+    pool,
+    showPool,
+  ])
 
   useEffect(() => {
     if (!showPool || !pool) {

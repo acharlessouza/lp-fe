@@ -1,8 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useAuth } from '../auth/AuthContext'
 import { useMarketSummary } from '../hooks/useMarketSummary'
-import type { Exchange, Network, Pool, Token } from '../services/api'
-import { getExchanges, getNetworks, getPoolByAddress, getPools, getTokens } from '../services/api'
+import type { Exchange, Network, Pool, RecentlyViewedPool, Token } from '../services/api'
+import {
+  getExchanges,
+  getNetworks,
+  getPoolByAddress,
+  getPools,
+  getRecentlyViewedPools,
+  getTokens,
+} from '../services/api'
 import './SimulatePage.css'
 
 type Mode = 'pair' | 'address'
@@ -225,6 +233,31 @@ const getUpdatedLabel = (updatedAt: string, now: number) => {
   return `Updated ${diffDays} day${diffDays === 1 ? '' : 's'} ago`
 }
 
+const getViewedLabel = (viewedAt: string, now: number) => {
+  const timestamp = new Date(viewedAt).getTime()
+  if (!Number.isFinite(timestamp)) {
+    return 'Viewed recently'
+  }
+
+  const diffMinutes = Math.max(0, Math.floor((now - timestamp) / 60000))
+
+  if (diffMinutes < 1) {
+    return 'Viewed just now'
+  }
+
+  if (diffMinutes < 60) {
+    return `Viewed ${diffMinutes} min ago`
+  }
+
+  const diffHours = Math.floor(diffMinutes / 60)
+  if (diffHours < 24) {
+    return `Viewed ${diffHours} hr ago`
+  }
+
+  const diffDays = Math.floor(diffHours / 24)
+  return `Viewed ${diffDays} day${diffDays === 1 ? '' : 's'} ago`
+}
+
 const getPoolPairText = (
   pool: Pool,
   fallbackToken0?: string,
@@ -268,6 +301,7 @@ function SimulatePage() {
   const [mode, setMode] = useState<Mode>('pair')
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const { isAuthenticated, isLoading: authLoading } = useAuth()
   const { data: marketSummary, loading: marketSummaryLoading, error: marketSummaryError } =
     useMarketSummary()
 
@@ -320,6 +354,8 @@ function SimulatePage() {
   const [pools, setPools] = useState<Pool[]>([])
   const [poolsStatus, setPoolsStatus] = useState<LoadStatus>(initialPoolsStatus)
   const [poolsError, setPoolsError] = useState('')
+  const [recentlyViewedPools, setRecentlyViewedPools] = useState<RecentlyViewedPool[]>([])
+  const [recentlyViewedStatus, setRecentlyViewedStatus] = useState<LoadStatus>('idle')
   const addressSearchAbortRef = useRef<AbortController | null>(null)
   const [marketNow, setMarketNow] = useState(() => Date.now())
 
@@ -396,6 +432,33 @@ function SimulatePage() {
     tokens.find((token) => token.address === token1)
   const selectedExchange = exchanges.find((exchange) => exchange.id === exchangeId)
   const selectedNetwork = networks.find((network) => network.id === networkId)
+
+  const getRecentlyViewedPoolHref = (pool: RecentlyViewedPool) => {
+    const params = new URLSearchParams({
+      exchange_id: String(pool.exchange_id),
+      network: pool.pool.chain_name || String(pool.chain_id),
+      network_id: String(pool.chain_id),
+      token0: pool.pool.token0_address,
+      token1: pool.pool.token1_address,
+      token0_symbol: pool.pool.token0_symbol,
+      token1_symbol: pool.pool.token1_symbol,
+    })
+
+    if (pool.pool.dex_name?.trim()) {
+      params.set('exchange_name', pool.pool.dex_name.trim())
+    }
+    if (pool.pool.chain_name?.trim()) {
+      params.set('network_name', pool.pool.chain_name.trim())
+    }
+    if (pool.pool.token0_icon_url?.trim()) {
+      params.set('token0_icon_url', pool.pool.token0_icon_url.trim())
+    }
+    if (pool.pool.token1_icon_url?.trim()) {
+      params.set('token1_icon_url', pool.pool.token1_icon_url.trim())
+    }
+
+    return `/simulate/pools/${encodeURIComponent(pool.pool_address)}?${params.toString()}`
+  }
 
   const basePoolDetailsQuery = useMemo(() => {
     if (!exchangeId) {
@@ -749,6 +812,33 @@ function SimulatePage() {
   }, [])
 
   useEffect(() => {
+    if (authLoading || !isAuthenticated) {
+      setRecentlyViewedPools([])
+      setRecentlyViewedStatus('idle')
+      return
+    }
+
+    const controller = new AbortController()
+
+    setRecentlyViewedStatus('loading')
+
+    getRecentlyViewedPools(10, controller.signal)
+      .then((response) => {
+        setRecentlyViewedPools(response.data ?? [])
+        setRecentlyViewedStatus('success')
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return
+        }
+        setRecentlyViewedPools([])
+        setRecentlyViewedStatus('error')
+      })
+
+    return () => controller.abort()
+  }, [authLoading, isAuthenticated])
+
+  useEffect(() => {
     const controller = new AbortController()
 
     getExchanges(controller.signal)
@@ -890,6 +980,9 @@ function SimulatePage() {
               : 'Matching pools will appear here.'
 
   const poolsReady = poolsStatus === 'success' && pools.length > 0
+  const shouldShowRecentlyViewedSection =
+    recentlyViewedStatus === 'loading' ||
+    (recentlyViewedStatus === 'success' && recentlyViewedPools.length > 0)
   const marketCards = useMemo(
     () =>
       MARKET_SUMMARY_ITEMS.map((item) => {
@@ -1261,19 +1354,82 @@ function SimulatePage() {
         </div>
       </section>
 
-      <section className="simulate-recent reveal delay-2">
-        <div className="simulate-recent-head">
-          <h2>Recently Viewed</h2>
-          <span className="simulate-pro-pill">PRO</span>
-        </div>
-        <div className="simulate-recent-card">
-          <div className="simulate-lock">Locked</div>
-          <p>Recently viewed pools are available for Pro users.</p>
-          <button type="button" className="simulate-upgrade-btn" disabled aria-disabled="true">
-            Upgrade to Pro
-          </button>
-        </div>
-      </section>
+      {shouldShowRecentlyViewedSection && (
+        <section className="simulate-recent reveal delay-2">
+          <div className="simulate-recent-head">
+            <h2>Recently Viewed</h2>
+            {recentlyViewedStatus === 'success' && (
+              <span className="simulate-recent-count">
+                {recentlyViewedPools.length} pool{recentlyViewedPools.length === 1 ? '' : 's'}
+              </span>
+            )}
+          </div>
+
+          {recentlyViewedStatus === 'loading' && (
+            <div className="simulate-status">Loading recently viewed pools...</div>
+          )}
+
+          {recentlyViewedStatus === 'success' && recentlyViewedPools.length > 0 && (
+            <div className="simulate-pool-list">
+              {recentlyViewedPools.map((recentPool, index) => {
+                const href = getRecentlyViewedPoolHref(recentPool)
+                const pairText = `${recentPool.pool.token0_symbol} / ${recentPool.pool.token1_symbol}`
+                const subtitle = getViewedLabel(recentPool.last_viewed_at, marketNow)
+
+                return (
+                  <Link
+                    key={`${recentPool.pool_address}-${recentPool.chain_id}-${recentPool.exchange_id}`}
+                    className="simulate-pool-link"
+                    to={href}
+                  >
+                    <article
+                      className={`simulate-pool-card${index === 0 ? ' is-featured' : ''}`}
+                    >
+                      <div className="simulate-pool-top">
+                        <div className="simulate-pool-main">
+                          <div className="simulate-token-icons" aria-hidden="true">
+                            <span>
+                              {recentPool.pool.token0_icon_url ? (
+                                <img src={recentPool.pool.token0_icon_url} alt="" loading="lazy" />
+                              ) : (
+                                recentPool.pool.token0_symbol.slice(0, 1).toUpperCase()
+                              )}
+                            </span>
+                            <span>
+                              {recentPool.pool.token1_icon_url ? (
+                                <img src={recentPool.pool.token1_icon_url} alt="" loading="lazy" />
+                              ) : (
+                                recentPool.pool.token1_symbol.slice(0, 1).toUpperCase()
+                              )}
+                            </span>
+                          </div>
+                          <div>
+                            <div className="simulate-pool-pair">{pairText}</div>
+                            <div className="simulate-pool-subtitle">{subtitle}</div>
+                            <div className="simulate-pool-tags">
+                              <span className="simulate-tag">{recentPool.pool.dex_name}</span>
+                              <span className="simulate-tag">{recentPool.pool.chain_name}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="simulate-pool-side">
+                          <span className="simulate-fee-pill">
+                            {(recentPool.pool.fee_tier / 10000).toFixed(2)}%
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="simulate-card-action">
+                        <span className="simulate-action-btn">Simulate →</span>
+                      </div>
+                    </article>
+                  </Link>
+                )
+              })}
+            </div>
+          )}
+        </section>
+      )}
     </main>
   )
 }
