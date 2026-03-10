@@ -25,6 +25,7 @@ import {
 import { useAuth } from '../auth/AuthContext'
 import { VolumeSummaryCard } from '../components/VolumeSummaryCard'
 import { VolumeHistoryChart } from '../components/VolumeHistoryChart'
+import { buildExternalPositionUrl } from '../features/externalPositionAction/buildExternalPositionUrl'
 import { useVolumeHistory } from '../hooks/useVolumeHistory'
 import './PoolDetailPage.css'
 
@@ -107,6 +108,9 @@ type DepositAmountProps = {
   allocateData: AllocateResponse | null
   loading: boolean
   error: string
+  createPositionDisabled: boolean
+  createPositionTitle?: string
+  onCreatePosition: () => void
 }
 
 const shortAddress = (address: string) => {
@@ -1899,6 +1903,9 @@ function DepositAmount({
   allocateData,
   loading,
   error,
+  createPositionDisabled,
+  createPositionTitle,
+  onCreatePosition,
 }: DepositAmountProps) {
   const amount0 = allocateData ? Number(allocateData.amount_token0) : 0
   const amount1 = allocateData ? Number(allocateData.amount_token1) : 0
@@ -1960,7 +1967,13 @@ function DepositAmount({
           </div>
         </div>
       </div>
-      <button type="button" className="action-button create-position-button">
+      <button
+        type="button"
+        className="action-button create-position-button"
+        disabled={createPositionDisabled}
+        title={createPositionTitle}
+        onClick={onCreatePosition}
+      >
         Create Position
       </button>
     </div>
@@ -2200,6 +2213,17 @@ function PoolDetailPage() {
       }),
     [normalizedPoolAddress, pool?.chain_key, pool?.dex_key],
   )
+  const createPositionUrl = useMemo(
+    () =>
+      buildExternalPositionUrl(pool?.external_position_action, {
+        isPairInverted,
+      }),
+    [isPairInverted, pool?.external_position_action],
+  )
+  const createPositionDisabled = createPositionUrl === null
+  const createPositionTitle = createPositionDisabled
+    ? 'Create position unavailable for this pool'
+    : undefined
 
   const {
     data: volumeHistoryData,
@@ -2843,6 +2867,13 @@ function PoolDetailPage() {
     setSearchParams(nextSearchParams)
   }, [isPairInverted, searchParams, setSearchParams])
 
+  const handleCreatePosition = useCallback(() => {
+    if (!createPositionUrl) {
+      return
+    }
+    window.open(createPositionUrl, '_blank', 'noopener,noreferrer')
+  }, [createPositionUrl])
+
   const handleCopyPoolAddress = async () => {
     if (!normalizedPoolAddress) {
       return
@@ -3097,6 +3128,9 @@ function PoolDetailPage() {
               allocateData={allocateData}
               loading={allocateLoading}
               error={allocateError}
+              createPositionDisabled={createPositionDisabled}
+              createPositionTitle={createPositionTitle}
+              onCreatePosition={handleCreatePosition}
             />
             <VolumeSummaryCard
               summary={volumeHistorySummary}

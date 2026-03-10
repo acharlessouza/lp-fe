@@ -335,11 +335,49 @@ export type PoolFavoriteResponse = {
   isFavorited: boolean
 }
 
+export type ExternalPositionActionChain = {
+  id: number
+  key: string
+}
+
+export type ExternalPositionActionPoolTokens = {
+  token0_address: string
+  token1_address: string
+}
+
+export type ExternalPositionActionFee = {
+  is_dynamic: boolean
+  fee_amount: number
+  tick_spacing: number
+}
+
+export type ExternalPositionActionDeeplinkPayload = Record<string, unknown> & {
+  chain?: string
+  fee?: ExternalPositionActionFee
+  hook?: string | null
+  priceRangeState?: Record<string, unknown>
+  depositState?: Record<string, unknown>
+}
+
+export type ExternalPositionAction = {
+  available: boolean
+  reason?: string | null
+  provider?: string | null
+  product?: string | null
+  version?: string | null
+  chain?: ExternalPositionActionChain | null
+  pool_tokens?: ExternalPositionActionPoolTokens | null
+  fee?: ExternalPositionActionFee | null
+  hook?: string | null
+  url_template?: string | null
+  deeplink_payload?: ExternalPositionActionDeeplinkPayload | null
+}
+
 export type PoolDetail = {
   id: string
   dex_key: string
   dex_name: string
-  dex_version: string
+  dex_version: string | null
   chain_key: string
   chain_name: string
   fee_tier: number
@@ -353,6 +391,7 @@ export type PoolDetail = {
   token1_icon_url?: string | null
   token0?: Token
   token1?: Token
+  external_position_action?: ExternalPositionAction | null
 }
 
 export type RecentlyViewedPool = {

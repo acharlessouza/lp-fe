@@ -405,6 +405,12 @@
   font-weight: 700;
 }
 
+.pool-detail .action-button:disabled,
+.pool-detail .ghost-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .pool-detail .range-card,
 .pool-detail .deposit-card,
 .pool-detail .pool-price-card {
