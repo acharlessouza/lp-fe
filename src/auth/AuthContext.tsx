@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { login, loginWithGoogle, logout, refreshSession, register } from './authApi'
+import { getMe, login, loginWithGoogle, logout, refreshSession, register } from './authApi'
 import type { User } from './types'
 import { setAccessToken, setOnUnauthorized } from '../services/api'
 
@@ -127,7 +127,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (cancelled) {
           return
         }
-        const resolvedUser = refreshed.user ?? stored?.user ?? null
+        let resolvedUser = refreshed.user ?? stored?.user ?? null
+
+        if (!resolvedUser?.name?.trim()) {
+          try {
+            const me = await getMe()
+            if (cancelled) {
+              return
+            }
+            resolvedUser = {
+              id: me.user.id,
+              name: me.user.name,
+              email: me.user.email,
+              email_verified: stored?.user?.email_verified ?? true,
+              is_active: stored?.user?.is_active ?? true,
+            }
+          } catch {
+            resolvedUser = refreshed.user ?? stored?.user ?? null
+          }
+        }
+
         setAuthState(refreshed.access_token, resolvedUser)
       } catch {
         if (!cancelled) {

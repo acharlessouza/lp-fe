@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import type {
   AllocateResponse,
   LiquidityDistributionResponse,
@@ -10,6 +10,8 @@ import type {
   SimulateAprV2Payload,
 } from '../services/api'
 import {
+  favoritePool,
+  getPoolFavoriteStatus,
   getPoolByAddress,
   getPoolPrice,
   postAllocate,
@@ -17,7 +19,9 @@ import {
   postLiquidityDistribution,
   postMatchTicks,
   postSimulateApr,
+  unfavoritePool,
 } from '../services/api'
+import { useAuth } from '../auth/AuthContext'
 import { VolumeSummaryCard } from '../components/VolumeSummaryCard'
 import { VolumeHistoryChart } from '../components/VolumeHistoryChart'
 import { useVolumeHistory } from '../hooks/useVolumeHistory'
@@ -112,34 +116,6 @@ const shortAddress = (address: string) => {
     return address
   }
   return `${address.slice(0, 6)}...${address.slice(-4)}`
-}
-
-const FAVORITE_POOLS_STORAGE_KEY = 'favorite_pools'
-
-const readFavoritePools = () => {
-  if (typeof window === 'undefined') {
-    return [] as string[]
-  }
-  try {
-    const raw = window.localStorage.getItem(FAVORITE_POOLS_STORAGE_KEY)
-    if (!raw) {
-      return [] as string[]
-    }
-    const parsed = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed)) {
-      return [] as string[]
-    }
-    return parsed.filter((item): item is string => typeof item === 'string')
-  } catch {
-    return [] as string[]
-  }
-}
-
-const writeFavoritePools = (items: string[]) => {
-  if (typeof window === 'undefined') {
-    return
-  }
-  window.localStorage.setItem(FAVORITE_POOLS_STORAGE_KEY, JSON.stringify(items))
 }
 
 const getPoolExplorerUrl = ({
@@ -1972,6 +1948,9 @@ function DepositAmount({
 
 function PoolDetailPage() {
   const { poolAddress } = useParams<{ poolAddress: string }>()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const { isAuthenticated, isLoading: authLoading } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const network = searchParams.get('network') ?? ''
   const networkIdParam = searchParams.get('network_id')
@@ -2072,6 +2051,9 @@ function PoolDetailPage() {
   const [isPairInverted, setIsPairInverted] = useState(() => swappedParam === 'true')
   const [copyStatus, setCopyStatus] = useState<'idle' | 'done' | 'error'>('idle')
   const [isFavoritePool, setIsFavoritePool] = useState(false)
+  const [favoriteStatusLoading, setFavoriteStatusLoading] = useState(false)
+  const [favoriteActionLoading, setFavoriteActionLoading] = useState(false)
+  const [favoriteError, setFavoriteError] = useState('')
   const distributionTickRange = 20000
 
   const allocateDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -2187,14 +2169,6 @@ function PoolDetailPage() {
     network.trim() ||
     (Number.isFinite(chainId) ? `Network ${chainId}` : 'Unknown network')
   const feeTierLabel = formatFeeTierPercent(feeTier)
-  const poolFavoriteKey = useMemo(() => {
-    if (!normalizedPoolAddress) {
-      return ''
-    }
-    return `${normalizedPoolAddress.toLowerCase()}|${pool?.dex_key ?? exchangeIdParam ?? ''}|${
-      pool?.chain_key ?? networkIdParam ?? network
-    }`
-  }, [exchangeIdParam, network, networkIdParam, normalizedPoolAddress, pool?.chain_key, pool?.dex_key])
   const poolExplorerUrl = useMemo(
     () =>
       getPoolExplorerUrl({
@@ -2441,13 +2415,54 @@ function PoolDetailPage() {
   }, [copyStatus])
 
   useEffect(() => {
-    if (!poolFavoriteKey) {
-      setIsFavoritePool(false)
+    if (authLoading || !isAuthenticated || !hasContext) {
       return
     }
-    const favorites = readFavoritePools()
-    setIsFavoritePool(favorites.includes(poolFavoriteKey))
-  }, [poolFavoriteKey])
+
+    let isActive = true
+    const controller = new AbortController()
+    const startLoadingTimer = window.setTimeout(() => {
+      if (!isActive) {
+        return
+      }
+      setFavoriteStatusLoading(true)
+      setFavoriteError('')
+    }, 0)
+
+    getPoolFavoriteStatus(normalizedPoolAddress, chainId, exchangeId, controller.signal)
+      .then((response) => {
+        if (!isActive) {
+          return
+        }
+        setIsFavoritePool(response.isFavorited)
+        setFavoriteError('')
+      })
+      .catch((error) => {
+        if (!isActive) {
+          return
+        }
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return
+        }
+        const message =
+          error instanceof Error ? error.message : 'Unable to load favorite status.'
+        setIsFavoritePool(false)
+        setFavoriteError(message)
+      })
+      .finally(() => {
+        window.clearTimeout(startLoadingTimer)
+        if (!isActive) {
+          return
+        }
+        setFavoriteStatusLoading(false)
+      })
+
+    return () => {
+      isActive = false
+      window.clearTimeout(startLoadingTimer)
+      controller.abort()
+    }
+  }, [authLoading, chainId, exchangeId, hasContext, isAuthenticated, normalizedPoolAddress])
 
   useEffect(() => {
     latestAllocateDataRef.current = allocateData
@@ -2725,17 +2740,50 @@ function PoolDetailPage() {
     setMatchedRangeKey(`${matchedMin}|${matchedMax}`)
   }
 
-  const handleToggleFavoritePool = () => {
-    if (!poolFavoriteKey) {
+  const resolvedIsFavoritePool = isAuthenticated && isFavoritePool
+  const favoriteButtonLabel = resolvedIsFavoritePool ? 'Unfavorite pool' : 'Favorite pool'
+
+  const handleToggleFavoritePool = async () => {
+    if (!hasContext || !normalizedPoolAddress || !Number.isFinite(chainId) || !Number.isFinite(exchangeId)) {
       return
     }
-    const favorites = readFavoritePools()
-    const exists = favorites.includes(poolFavoriteKey)
-    const nextFavorites = exists
-      ? favorites.filter((item) => item !== poolFavoriteKey)
-      : [...favorites, poolFavoriteKey]
-    writeFavoritePools(nextFavorites)
-    setIsFavoritePool(!exists)
+
+    if (!isAuthenticated) {
+      const currentPath = `${location.pathname}${location.search}`
+      navigate(
+        {
+          pathname: location.pathname,
+          search: location.search,
+        },
+        {
+          state: {
+            openAuth: 'login',
+            from: currentPath,
+          },
+        },
+      )
+      return
+    }
+
+    if (favoriteStatusLoading || favoriteActionLoading) {
+      return
+    }
+
+    setFavoriteActionLoading(true)
+    setFavoriteError('')
+
+    try {
+      const response = resolvedIsFavoritePool
+        ? await unfavoritePool(normalizedPoolAddress, chainId, exchangeId)
+        : await favoritePool(normalizedPoolAddress, chainId, exchangeId)
+      setIsFavoritePool(response.isFavorited)
+      setFavoriteError('')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to update favorite.'
+      setFavoriteError(message)
+    } finally {
+      setFavoriteActionLoading(false)
+    }
   }
 
   const handleTogglePairDirection = useCallback(() => {
@@ -2885,10 +2933,12 @@ function PoolDetailPage() {
           </button>
           <button
             type="button"
-            className={`icon-button favorite-icon-button${isFavoritePool ? ' is-active' : ''}`}
+            className={`icon-button favorite-icon-button${resolvedIsFavoritePool ? ' is-active' : ''}`}
             onClick={handleToggleFavoritePool}
-            aria-label={isFavoritePool ? 'Unfavorite pool' : 'Favorite pool'}
-            title={isFavoritePool ? 'Unfavorite pool' : 'Favorite pool'}
+            aria-label={favoriteButtonLabel}
+            aria-pressed={resolvedIsFavoritePool}
+            title={favoriteActionLoading ? 'Updating favorite...' : favoriteButtonLabel}
+            disabled={!hasContext || authLoading || favoriteStatusLoading || favoriteActionLoading}
           >
             <svg className="star-icon" viewBox="0 0 24 24" aria-hidden="true">
               <path d="m12 3.5 2.6 5.27 5.82.85-4.21 4.1.99 5.79L12 16.76 6.8 19.51l.99-5.79-4.21-4.1 5.82-.85L12 3.5z" />
@@ -2945,6 +2995,8 @@ function PoolDetailPage() {
           Missing pool context. Please return to the pool list.
         </div>
       )}
+
+      {favoriteError && isAuthenticated && <div className="detail-status error">{favoriteError}</div>}
 
       {isLoading && <div className="detail-status">Loading pool details...</div>}
 

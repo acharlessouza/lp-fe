@@ -1,5 +1,5 @@
 import { fetchJson } from '../services/api'
-import type { LoginResponse, RefreshResponse, RegisterResponse } from './types'
+import type { LoginResponse, MeResponse, RefreshResponse, RegisterResponse } from './types'
 
 export const login = (email: string, password: string) =>
   fetchJson<LoginResponse>('/v1/auth/login', {
@@ -36,6 +36,8 @@ export const refreshSession = () =>
     method: 'POST',
     authenticated: false,
   })
+
+export const getMe = () => fetchJson<MeResponse>('/v1/me')
 
 export const forgotPassword = (email: string) =>
   fetchJson<{ ok?: boolean; message?: string }>('/v1/auth/password/forgot', {

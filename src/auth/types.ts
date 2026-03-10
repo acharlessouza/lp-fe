@@ -25,3 +25,14 @@ export type RefreshResponse = {
   refresh_expires_at?: string
   user?: User
 }
+
+export type MeResponse = {
+  user: {
+    id: string
+    name: string
+    email: string
+  }
+  plan_code: string
+  features: Record<string, boolean>
+  limits: Record<string, number>
+}

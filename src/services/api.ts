@@ -331,6 +331,10 @@ export type MarketSummaryResponse = {
   }
 }
 
+export type PoolFavoriteResponse = {
+  isFavorited: boolean
+}
+
 export type PoolDetail = {
   id: string
   dex_key: string
@@ -594,6 +598,51 @@ export const getPoolByAddress = (
       poolAddress,
     )}?chain_id=${chainId}&exchange_id=${exchangeId}`,
     { signal },
+  )
+
+export const getPoolFavoriteStatus = (
+  poolAddress: string,
+  chainId: number,
+  exchangeId: number,
+  signal?: AbortSignal,
+) =>
+  fetchJson<PoolFavoriteResponse>(
+    `/v1/pools/by-address/${encodeURIComponent(
+      poolAddress,
+    )}/favorite?chain_id=${chainId}&exchange_id=${exchangeId}`,
+    { signal },
+  )
+
+export const favoritePool = (
+  poolAddress: string,
+  chainId: number,
+  exchangeId: number,
+  signal?: AbortSignal,
+) =>
+  fetchJson<PoolFavoriteResponse>(
+    `/v1/pools/by-address/${encodeURIComponent(
+      poolAddress,
+    )}/favorite?chain_id=${chainId}&exchange_id=${exchangeId}`,
+    {
+      method: 'PUT',
+      signal,
+    },
+  )
+
+export const unfavoritePool = (
+  poolAddress: string,
+  chainId: number,
+  exchangeId: number,
+  signal?: AbortSignal,
+) =>
+  fetchJson<PoolFavoriteResponse>(
+    `/v1/pools/by-address/${encodeURIComponent(
+      poolAddress,
+    )}/favorite?chain_id=${chainId}&exchange_id=${exchangeId}`,
+    {
+      method: 'DELETE',
+      signal,
+    },
   )
 
 export const postLiquidityDistribution = (
