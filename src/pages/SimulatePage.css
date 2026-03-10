@@ -400,6 +400,40 @@
   color: var(--red);
 }
 
+.simulate-address-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.simulate-submit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--accentg-strong);
+  border-radius: var(--r);
+  background: var(--accent);
+  color: #000;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--fbody);
+  cursor: pointer;
+  transition: filter 0.15s ease, opacity 0.15s ease;
+}
+
+.simulate-submit-btn:hover:not(:disabled) {
+  filter: brightness(1.03);
+}
+
+.simulate-submit-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .simulate-inline-error {
   margin-top: -2px;
   margin-bottom: 8px;

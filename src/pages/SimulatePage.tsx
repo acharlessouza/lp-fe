@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import type { Exchange, Network, Pool, Token } from '../services/api'
-import { getExchanges, getNetworks, getPools, getTokens } from '../services/api'
+import { getExchanges, getNetworks, getPoolByAddress, getPools, getTokens } from '../services/api'
 import './SimulatePage.css'
 
 type Mode = 'pair' | 'address'
@@ -273,6 +273,7 @@ const getPoolSubLabel = (pool: Pool) => {
 
 function SimulatePage() {
   const [mode, setMode] = useState<Mode>('pair')
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
   const exchangeParam = searchParams.get('exchange_id')
@@ -317,12 +318,17 @@ function SimulatePage() {
   const [token1, setToken1] = useState(token1Param)
   const [token0Query, setToken0Query] = useState(initialToken0Query)
   const [token1Query, setToken1Query] = useState(initialToken1Query)
+  const [poolAddressQuery, setPoolAddressQuery] = useState('')
+  const [addressSearchStatus, setAddressSearchStatus] = useState<LoadStatus>('idle')
+  const [addressSearchError, setAddressSearchError] = useState('')
 
   const [pools, setPools] = useState<Pool[]>([])
   const [poolsStatus, setPoolsStatus] = useState<LoadStatus>(initialPoolsStatus)
   const [poolsError, setPoolsError] = useState('')
+  const addressSearchAbortRef = useRef<AbortController | null>(null)
 
   const sameToken = token0 !== '' && token0 === token1
+  const trimmedPoolAddressQuery = poolAddressQuery.trim()
 
   const orderedTokens = useMemo(() => {
     return [...tokens].sort((a, b) => {
@@ -395,7 +401,7 @@ function SimulatePage() {
   const selectedExchange = exchanges.find((exchange) => exchange.id === exchangeId)
   const selectedNetwork = networks.find((network) => network.id === networkId)
 
-  const poolDetailsQuery = useMemo(() => {
+  const basePoolDetailsQuery = useMemo(() => {
     if (!exchangeId) {
       return ''
     }
@@ -413,17 +419,25 @@ function SimulatePage() {
     if (networkId) {
       params.set('network_id', String(networkId))
     }
-    if (token0) {
-      params.set('token0', token0)
-    }
-    if (token1) {
-      params.set('token1', token1)
-    }
     if (selectedExchange?.name) {
       params.set('exchange_name', selectedExchange.name)
     }
     if (selectedNetwork?.name) {
       params.set('network_name', selectedNetwork.name)
+    }
+    return params.toString()
+  }, [exchangeId, networkId, selectedExchange, selectedNetwork])
+
+  const poolDetailsQuery = useMemo(() => {
+    if (!basePoolDetailsQuery) {
+      return ''
+    }
+    const params = new URLSearchParams(basePoolDetailsQuery)
+    if (token0) {
+      params.set('token0', token0)
+    }
+    if (token1) {
+      params.set('token1', token1)
     }
     if (selectedToken0) {
       params.set('token0_symbol', tokenOptionLabel(selectedToken0))
@@ -441,10 +455,7 @@ function SimulatePage() {
     }
     return params.toString()
   }, [
-    exchangeId,
-    networkId,
-    selectedExchange,
-    selectedNetwork,
+    basePoolDetailsQuery,
     selectedToken0,
     selectedToken1,
     token0,
@@ -454,17 +465,22 @@ function SimulatePage() {
   const resolvePoolAddress = (pool: Pool) =>
     pool.address ?? (pool as { pool_address?: string }).pool_address ?? ''
 
-  const getPoolDetailsHref = (address?: string) => {
-    if (!address || !poolDetailsQuery) {
+  const getPoolDetailsHref = (address?: string, query = poolDetailsQuery) => {
+    if (!address || !query) {
       return ''
     }
-    return `/simulate/pools/${encodeURIComponent(address)}?${poolDetailsQuery}`
+    return `/simulate/pools/${encodeURIComponent(address)}?${query}`
   }
 
   const resetPools = () => {
     setPools([])
     setPoolsStatus('idle')
     setPoolsError('')
+  }
+
+  const resetAddressSearchFeedback = () => {
+    setAddressSearchStatus('idle')
+    setAddressSearchError('')
   }
 
   const resetPairTokens = () => {
@@ -514,6 +530,7 @@ function SimulatePage() {
 
   const handleExchangeSelect = (item: ComboItem<Exchange>) => {
     resetNetworks()
+    resetAddressSearchFeedback()
     setExchangeId(item.data.id)
     setExchangeQuery(item.data.name)
     setNetworksStatus('loading')
@@ -536,10 +553,13 @@ function SimulatePage() {
 
   const handleNetworkSelect = (item: ComboItem<Network>) => {
     resetTokens()
+    resetAddressSearchFeedback()
     setNetworkId(item.data.id)
     setNetworkQuery(item.data.name)
-    setTokensStatus('loading')
-    setTokensError('')
+    if (mode === 'pair') {
+      setTokensStatus('loading')
+      setTokensError('')
+    }
   }
 
   const maybeStartPoolsFetch = (nextToken0: string, nextToken1: string) => {
@@ -624,6 +644,106 @@ function SimulatePage() {
     maybeStartPoolsFetch(token0, item.data.address)
   }
 
+  const handleModeChange = (nextMode: Mode) => {
+    if (nextMode === mode) {
+      return
+    }
+
+    setMode(nextMode)
+
+    if (nextMode !== 'pair') {
+      return
+    }
+
+    if (exchangeId && networkId && tokensStatus === 'idle') {
+      setTokensStatus('loading')
+      setTokensError('')
+    }
+
+    if (exchangeId && networkId && token0 && pairTokensStatus === 'idle') {
+      setPairTokensStatus('loading')
+      setPairTokensError('')
+    }
+
+    if (exchangeId && networkId && token0 && token1 && !sameToken && poolsStatus === 'idle') {
+      setPoolsStatus('loading')
+      setPoolsError('')
+    }
+  }
+
+  const handlePoolAddressQueryChange = (value: string) => {
+    setPoolAddressQuery(value)
+    if (addressSearchStatus !== 'idle' || addressSearchError) {
+      resetAddressSearchFeedback()
+    }
+  }
+
+  const getAddressSearchErrorMessage = (message: string) => {
+    const normalized = message.trim().toLowerCase()
+    if (!normalized) {
+      return 'Unable to find this pool. Please try again.'
+    }
+    if (normalized.includes('not found') || normalized.includes('404')) {
+      return 'No pool was found for this address on the selected exchange and network.'
+    }
+    if (normalized.includes('unable to reach the server')) {
+      return 'Unable to reach the server. Please try again.'
+    }
+    return message
+  }
+
+  const handleAddressSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    if (!exchangeId || !networkId) {
+      setAddressSearchStatus('error')
+      setAddressSearchError('Select an exchange and a network before searching by address.')
+      return
+    }
+
+    if (!trimmedPoolAddressQuery) {
+      setAddressSearchStatus('error')
+      setAddressSearchError('Enter a pool address.')
+      return
+    }
+
+    addressSearchAbortRef.current?.abort()
+    const controller = new AbortController()
+    addressSearchAbortRef.current = controller
+
+    setAddressSearchStatus('loading')
+    setAddressSearchError('')
+
+    getPoolByAddress(trimmedPoolAddressQuery, networkId, exchangeId, controller.signal)
+      .then(() => {
+        if (controller.signal.aborted) {
+          return
+        }
+        addressSearchAbortRef.current = null
+        setAddressSearchStatus('success')
+        const href = getPoolDetailsHref(trimmedPoolAddressQuery, basePoolDetailsQuery)
+        navigate(href || `/simulate/pools/${encodeURIComponent(trimmedPoolAddressQuery)}`)
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return
+        }
+        addressSearchAbortRef.current = null
+        setAddressSearchStatus('error')
+        setAddressSearchError(
+          getAddressSearchErrorMessage(
+            error instanceof Error ? error.message : 'Unable to find this pool. Please try again.',
+          ),
+        )
+      })
+  }
+
+  useEffect(() => {
+    return () => {
+      addressSearchAbortRef.current?.abort()
+    }
+  }, [])
+
   useEffect(() => {
     const controller = new AbortController()
 
@@ -667,7 +787,7 @@ function SimulatePage() {
   }, [exchangeId])
 
   useEffect(() => {
-    if (!exchangeId || !networkId) {
+    if (mode !== 'pair' || !exchangeId || !networkId) {
       return
     }
 
@@ -687,10 +807,10 @@ function SimulatePage() {
       })
 
     return () => controller.abort()
-  }, [exchangeId, networkId])
+  }, [exchangeId, mode, networkId])
 
   useEffect(() => {
-    if (!exchangeId || !networkId || !token0) {
+    if (mode !== 'pair' || !exchangeId || !networkId || !token0) {
       return
     }
 
@@ -713,10 +833,10 @@ function SimulatePage() {
       })
 
     return () => controller.abort()
-  }, [exchangeId, networkId, token0])
+  }, [exchangeId, mode, networkId, token0])
 
   useEffect(() => {
-    if (!exchangeId || !networkId || !token0 || !token1 || sameToken) {
+    if (mode !== 'pair' || !exchangeId || !networkId || !token0 || !token1 || sameToken) {
       return
     }
 
@@ -736,7 +856,7 @@ function SimulatePage() {
       })
 
     return () => controller.abort()
-  }, [exchangeId, networkId, token0, token1, sameToken])
+  }, [exchangeId, mode, networkId, token0, token1, sameToken])
 
   const selectedToken0Label = selectedToken0 ? tokenOptionLabel(selectedToken0) : ''
   const selectedToken1Label = selectedToken1 ? tokenOptionLabel(selectedToken1) : ''
@@ -744,15 +864,26 @@ function SimulatePage() {
     selectedToken0Label && selectedToken1Label
       ? `${selectedToken0Label} / ${selectedToken1Label}`
       : 'Select a token pair'
-  const poolFoundMessage = !token0 || !token1
-    ? 'Select token A and token B to search pools.'
-    : sameToken
-      ? 'Token A and Token B must be different.'
-      : poolsStatus === 'loading'
-        ? `Searching pools for ${selectedPairLabel}...`
-        : poolsStatus === 'success'
-          ? `${pools.length} pool${pools.length === 1 ? '' : 's'} found for ${selectedPairLabel}`
-          : 'Matching pools will appear here.'
+  const poolFoundMessage =
+    mode === 'address'
+      ? !exchangeId || !networkId
+        ? 'Select an exchange and a network to search by pool address.'
+        : !trimmedPoolAddressQuery
+          ? 'Enter a pool address to open the simulation.'
+          : addressSearchStatus === 'loading'
+            ? 'Looking up the pool address...'
+            : addressSearchStatus === 'error'
+              ? addressSearchError || 'Unable to find this pool.'
+              : 'Open the simulation directly when you know the exact pool address.'
+      : !token0 || !token1
+        ? 'Select token A and token B to search pools.'
+        : sameToken
+          ? 'Token A and Token B must be different.'
+          : poolsStatus === 'loading'
+            ? `Searching pools for ${selectedPairLabel}...`
+            : poolsStatus === 'success'
+              ? `${pools.length} pool${pools.length === 1 ? '' : 's'} found for ${selectedPairLabel}`
+              : 'Matching pools will appear here.'
 
   const topPoolAprValue = useMemo(() => {
     const aprValues = pools
@@ -824,7 +955,11 @@ function SimulatePage() {
             {topPoolAprValue === null ? '--' : formatPercentValue(topPoolAprValue)}
           </div>
           <div className="market-sub">
-            {selectedToken0Label && selectedToken1Label
+            {mode === 'address'
+              ? selectedExchange?.name && selectedNetwork?.name
+                ? `${selectedExchange.name} · ${selectedNetwork.name}`
+                : 'Search an exact pool by address'
+              : selectedToken0Label && selectedToken1Label
               ? `${selectedPairLabel} · ${selectedExchange?.name ?? 'Exchange'}`
               : 'Select a pair to inspect opportunities'}
           </div>
@@ -839,11 +974,15 @@ function SimulatePage() {
             <button
               type="button"
               className={`simulate-seg-btn${mode === 'pair' ? ' is-active' : ''}`}
-              onClick={() => setMode('pair')}
+              onClick={() => handleModeChange('pair')}
             >
               By Pair
             </button>
-            <button type="button" className="simulate-seg-btn" disabled aria-disabled="true">
+            <button
+              type="button"
+              className={`simulate-seg-btn${mode === 'address' ? ' is-active' : ''}`}
+              onClick={() => handleModeChange('address')}
+            >
               By Address
             </button>
           </div>
@@ -902,64 +1041,101 @@ function SimulatePage() {
             )}
           </div>
 
-          <div className="simulate-token-grid">
-            <div className="simulate-field">
-              <label htmlFor="token0">Token A</label>
-              <SearchableCombobox
-                id="token0"
-                placeholder={
-                  !networkId
-                    ? 'Select a network first'
-                    : tokensStatus === 'loading'
-                      ? 'Loading tokens...'
-                      : 'Select token A'
-                }
-                items={tokenItems}
-                query={token0Query}
-                disabled={!networkId || tokensStatus === 'loading' || tokensStatus === 'error'}
-                isLoading={tokensStatus === 'loading'}
-                emptyMessage="No tokens found."
-                showIcons
-                selectedIconUrl={selectedToken0 ? getTokenIconUrl(selectedToken0) : null}
-                selectedIconAlt={selectedToken0Label}
-                onQueryChange={handleToken0QueryChange}
-                onSelect={handleToken0Select}
-              />
-            </div>
-            <div className="simulate-field">
-              <label htmlFor="token1">Token B</label>
-              <SearchableCombobox
-                id="token1"
-                placeholder={
-                  !token0
-                    ? 'Select token A first'
-                    : pairTokensStatus === 'loading'
-                      ? 'Loading related tokens...'
-                      : 'Select token B'
-                }
-                items={pairTokenItems}
-                query={token1Query}
-                disabled={!token0 || pairTokensStatus === 'loading' || pairTokensStatus === 'error'}
-                isLoading={pairTokensStatus === 'loading'}
-                emptyMessage="No token pairs found."
-                showIcons
-                selectedIconUrl={selectedToken1 ? getTokenIconUrl(selectedToken1) : null}
-                selectedIconAlt={selectedToken1Label}
-                onQueryChange={handleToken1QueryChange}
-                onSelect={handleToken1Select}
-              />
-            </div>
-          </div>
+          {mode === 'pair' ? (
+            <>
+              <div className="simulate-token-grid">
+                <div className="simulate-field">
+                  <label htmlFor="token0">Token A</label>
+                  <SearchableCombobox
+                    id="token0"
+                    placeholder={
+                      !networkId
+                        ? 'Select a network first'
+                        : tokensStatus === 'loading'
+                          ? 'Loading tokens...'
+                          : 'Select token A'
+                    }
+                    items={tokenItems}
+                    query={token0Query}
+                    disabled={!networkId || tokensStatus === 'loading' || tokensStatus === 'error'}
+                    isLoading={tokensStatus === 'loading'}
+                    emptyMessage="No tokens found."
+                    showIcons
+                    selectedIconUrl={selectedToken0 ? getTokenIconUrl(selectedToken0) : null}
+                    selectedIconAlt={selectedToken0Label}
+                    onQueryChange={handleToken0QueryChange}
+                    onSelect={handleToken0Select}
+                  />
+                </div>
+                <div className="simulate-field">
+                  <label htmlFor="token1">Token B</label>
+                  <SearchableCombobox
+                    id="token1"
+                    placeholder={
+                      !token0
+                        ? 'Select token A first'
+                        : pairTokensStatus === 'loading'
+                          ? 'Loading related tokens...'
+                          : 'Select token B'
+                    }
+                    items={pairTokenItems}
+                    query={token1Query}
+                    disabled={
+                      !token0 || pairTokensStatus === 'loading' || pairTokensStatus === 'error'
+                    }
+                    isLoading={pairTokensStatus === 'loading'}
+                    emptyMessage="No token pairs found."
+                    showIcons
+                    selectedIconUrl={selectedToken1 ? getTokenIconUrl(selectedToken1) : null}
+                    selectedIconAlt={selectedToken1Label}
+                    onQueryChange={handleToken1QueryChange}
+                    onSelect={handleToken1Select}
+                  />
+                </div>
+              </div>
 
-          {tokensStatus === 'error' && (
-            <div className="simulate-inline-error">
-              {tokensError || 'Unable to load tokens.'}
-            </div>
-          )}
-          {pairTokensStatus === 'error' && (
-            <div className="simulate-inline-error">
-              {pairTokensError || 'Unable to load token pairs.'}
-            </div>
+              {tokensStatus === 'error' && (
+                <div className="simulate-inline-error">
+                  {tokensError || 'Unable to load tokens.'}
+                </div>
+              )}
+              {pairTokensStatus === 'error' && (
+                <div className="simulate-inline-error">
+                  {pairTokensError || 'Unable to load token pairs.'}
+                </div>
+              )}
+            </>
+          ) : (
+            <form className="simulate-address-form" onSubmit={handleAddressSubmit}>
+              <div className="simulate-field">
+                <label htmlFor="pool-address">Pool Address</label>
+                <input
+                  id="pool-address"
+                  className="combo-input"
+                  type="text"
+                  placeholder="Enter pool address"
+                  value={poolAddressQuery}
+                  onChange={(event) => handlePoolAddressQueryChange(event.target.value)}
+                  disabled={addressSearchStatus === 'loading'}
+                  autoComplete="off"
+                />
+                {addressSearchStatus === 'error' && addressSearchError && (
+                  <span className="simulate-field-error">{addressSearchError}</span>
+                )}
+              </div>
+              <button
+                type="submit"
+                className="simulate-submit-btn"
+                disabled={
+                  addressSearchStatus === 'loading' ||
+                  !exchangeId ||
+                  !networkId ||
+                  !trimmedPoolAddressQuery
+                }
+              >
+                {addressSearchStatus === 'loading' ? 'Opening simulation...' : 'Open simulation'}
+              </button>
+            </form>
           )}
 
           <div className="simulate-divider" />
@@ -969,93 +1145,115 @@ function SimulatePage() {
         <div className="simulate-panel">
           <div className="simulate-panel-title">Matching Pools</div>
 
-          {sameToken && (
-            <div className="simulate-status simulate-status-error">
-              Token A and Token B must be different to search pools.
-            </div>
-          )}
-          {!token0 || !token1 ? (
-            <div className="simulate-status">
-              Select token A and token B to list matching pools.
-            </div>
-          ) : null}
-          {poolsStatus === 'error' && (
-            <div className="simulate-status simulate-status-error">
-              {poolsError || 'Unable to load pools.'}
-            </div>
-          )}
-          {poolsStatus === 'loading' && (
-            <div className="simulate-status">Looking up available pools...</div>
-          )}
-          {poolsStatus === 'success' && pools.length === 0 && (
-            <div className="simulate-status">No pools found for this pair.</div>
-          )}
+          {mode === 'address' ? (
+            <>
+              <div className="simulate-status">
+                Select an exchange, a network, and enter the exact pool address to open the
+                simulation directly.
+              </div>
+              {addressSearchStatus === 'loading' && (
+                <div className="simulate-status">Looking up the selected pool address...</div>
+              )}
+              {addressSearchStatus === 'error' && addressSearchError && (
+                <div className="simulate-status simulate-status-error">{addressSearchError}</div>
+              )}
+              {addressSearchStatus === 'success' && (
+                <div className="simulate-status">Pool found. Opening the simulation...</div>
+              )}
+            </>
+          ) : (
+            <>
+              {sameToken && (
+                <div className="simulate-status simulate-status-error">
+                  Token A and Token B must be different to search pools.
+                </div>
+              )}
+              {!token0 || !token1 ? (
+                <div className="simulate-status">
+                  Select token A and token B to list matching pools.
+                </div>
+              ) : null}
+              {poolsStatus === 'error' && (
+                <div className="simulate-status simulate-status-error">
+                  {poolsError || 'Unable to load pools.'}
+                </div>
+              )}
+              {poolsStatus === 'loading' && (
+                <div className="simulate-status">Looking up available pools...</div>
+              )}
+              {poolsStatus === 'success' && pools.length === 0 && (
+                <div className="simulate-status">No pools found for this pair.</div>
+              )}
 
-          {poolsReady && (
-            <div className="simulate-pool-list">
-              {pools.map((pool, index) => {
-                const poolAddress = resolvePoolAddress(pool)
-                const href = getPoolDetailsHref(poolAddress)
-                const pairText = getPoolPairText(
-                  pool,
-                  selectedToken0Label || undefined,
-                  selectedToken1Label || undefined,
-                  index,
-                )
-                const subtitle = getPoolSubLabel(pool)
+              {poolsReady && (
+                <div className="simulate-pool-list">
+                  {pools.map((pool, index) => {
+                    const poolAddress = resolvePoolAddress(pool)
+                    const href = getPoolDetailsHref(poolAddress)
+                    const pairText = getPoolPairText(
+                      pool,
+                      selectedToken0Label || undefined,
+                      selectedToken1Label || undefined,
+                      index,
+                    )
+                    const subtitle = getPoolSubLabel(pool)
 
-                const content = (
-                  <article
-                    className={`simulate-pool-card${index === 0 ? ' is-featured' : ''}${href ? '' : ' is-disabled'}`}
-                    aria-disabled={!href}
-                  >
-                    <div className="simulate-pool-top">
-                      <div className="simulate-pool-main">
-                        <div className="simulate-token-icons" aria-hidden="true">
-                          <span>{(selectedToken0Label || 'A').slice(0, 1)}</span>
-                          <span>{(selectedToken1Label || 'B').slice(0, 1)}</span>
-                        </div>
-                        <div>
-                          <div className="simulate-pool-pair">{pairText}</div>
-                          <div className="simulate-pool-subtitle">{subtitle}</div>
-                          <div className="simulate-pool-tags">
-                            <span className="simulate-tag">
-                              {selectedExchange?.name ?? 'Exchange'}
-                            </span>
-                            <span className="simulate-tag">
-                              {selectedNetwork?.name ?? 'Network'}
+                    const content = (
+                      <article
+                        className={`simulate-pool-card${index === 0 ? ' is-featured' : ''}${href ? '' : ' is-disabled'}`}
+                        aria-disabled={!href}
+                      >
+                        <div className="simulate-pool-top">
+                          <div className="simulate-pool-main">
+                            <div className="simulate-token-icons" aria-hidden="true">
+                              <span>{(selectedToken0Label || 'A').slice(0, 1)}</span>
+                              <span>{(selectedToken1Label || 'B').slice(0, 1)}</span>
+                            </div>
+                            <div>
+                              <div className="simulate-pool-pair">{pairText}</div>
+                              <div className="simulate-pool-subtitle">{subtitle}</div>
+                              <div className="simulate-pool-tags">
+                                <span className="simulate-tag">
+                                  {selectedExchange?.name ?? 'Exchange'}
+                                </span>
+                                <span className="simulate-tag">
+                                  {selectedNetwork?.name ?? 'Network'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="simulate-pool-side">
+                            <span className="simulate-fee-pill">
+                              {formatFeeTier(pool).replace('Fee ', '')}
                             </span>
                           </div>
                         </div>
-                      </div>
-                      <div className="simulate-pool-side">
-                        <span className="simulate-fee-pill">{formatFeeTier(pool).replace('Fee ', '')}</span>
-                      </div>
-                    </div>
 
-                    {href && (
-                      <div className="simulate-card-action">
-                        <span className="simulate-action-btn">Simulate →</span>
-                      </div>
-                    )}
-                  </article>
-                )
+                        {href && (
+                          <div className="simulate-card-action">
+                            <span className="simulate-action-btn">Simulate →</span>
+                          </div>
+                        )}
+                      </article>
+                    )
 
-                if (!href) {
-                  return <div key={`${pool.id ?? poolAddress ?? index}`}>{content}</div>
-                }
+                    if (!href) {
+                      return <div key={`${pool.id ?? poolAddress ?? index}`}>{content}</div>
+                    }
 
-                return (
-                  <Link
-                    key={`${pool.id ?? poolAddress ?? index}`}
-                    className="simulate-pool-link"
-                    to={href}
-                  >
-                    {content}
-                  </Link>
-                )
-              })}
-            </div>
+                    return (
+                      <Link
+                        key={`${pool.id ?? poolAddress ?? index}`}
+                        className="simulate-pool-link"
+                        to={href}
+                      >
+                        {content}
+                      </Link>
+                    )
+                  })}
+                </div>
+              )}
+            </>
           )}
         </div>
       </section>

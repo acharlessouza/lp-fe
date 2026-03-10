@@ -2055,6 +2055,7 @@ function PoolDetailPage() {
   const [allocateLoading, setAllocateLoading] = useState(false)
   const [allocateError, setAllocateError] = useState('')
   const [poolTickSpacing, setPoolTickSpacing] = useState<number | null>(null)
+  const [isInitialRangeResolved, setIsInitialRangeResolved] = useState(false)
 
   const [matchedCurrentPrice, setMatchedCurrentPrice] = useState<number | null>(null)
   const [matchedRangeKey, setMatchedRangeKey] = useState<string | null>(null)
@@ -2089,7 +2090,6 @@ function PoolDetailPage() {
   const latestAllocateDataRef = useRef<AllocateResponse | null>(allocateData)
   const allocateResultKeyRef = useRef<string | null>(null)
   const lastAprKeyRef = useRef<string | null>(null)
-  const hasMountedRef = useRef(false)
   const snapshotDateRef = useRef(new Date().toISOString().slice(0, 10))
 
   const hasContext = Boolean(normalizedPoolAddress && Number.isFinite(chainId) && Number.isFinite(exchangeId))
@@ -2394,6 +2394,7 @@ function PoolDetailPage() {
       setPoolPriceData(null)
     } finally {
       setPoolPriceLoading(false)
+      setIsInitialRangeResolved(true)
     }
   }, [chainId, exchangeId, isPairInverted, normalizedPoolAddress, pool, timeframeDays])
 
@@ -2513,8 +2514,10 @@ function PoolDetailPage() {
 
     const amountToken0 = getSafeNumber(alloc?.amount_token0)
     const amountToken1 = getSafeNumber(alloc?.amount_token1)
-    const hasAmountToken0 = Number.isFinite(amountToken0) && amountToken0 > 0
-    const hasAmountToken1 = Number.isFinite(amountToken1) && amountToken1 > 0
+    const hasAllocateAmounts = Number.isFinite(amountToken0) && Number.isFinite(amountToken1)
+    if (!hasAllocateAmounts) {
+      return
+    }
 
     const aprKey = `${requestKey}|v2|${parsedDays}|${amountToken0}|${amountToken1}|${selectedCalculationMethod}|${customCalculationPriceValue ?? ''}`
     if (lastAprKeyRef.current === aprKey) {
@@ -2528,8 +2531,8 @@ function PoolDetailPage() {
       dex_id: exchangeId,
       swapped_pair: isPairInverted,
       ...(hasDeposit ? { deposit_usd: String(parsedDeposit) } : {}),
-      ...(hasAmountToken0 ? { amount_token0: String(amountToken0) } : {}),
-      ...(hasAmountToken1 ? { amount_token1: String(amountToken1) } : {}),
+      amount_token0: String(amountToken0),
+      amount_token1: String(amountToken1),
     }
 
     setSimulateAprLoading(true)
@@ -2583,6 +2586,7 @@ function PoolDetailPage() {
   useEffect(() => {
     defaultRangeKeyRef.current = null
     setPoolTickSpacing(null)
+    setIsInitialRangeResolved(false)
     setSimulateAprData(null)
     setSimulateAprError('')
     setSimulateAprLoading(false)
@@ -2645,8 +2649,7 @@ function PoolDetailPage() {
 
     initialRangeFetchKeyRef.current = activeKey
     fetchDistribution()
-    fetchAllocate()
-  }, [activeKey, fetchAllocate, fetchDistribution, pool, showPool])
+  }, [activeKey, fetchDistribution, pool, showPool])
 
   useEffect(() => {
     if (!showPool || !pool) {
@@ -2656,11 +2659,7 @@ function PoolDetailPage() {
   }, [fetchPoolPrice, pool, showPool, timeframeDays])
 
   useEffect(() => {
-    if (!showPool || !pool) {
-      return
-    }
-    if (!hasMountedRef.current) {
-      hasMountedRef.current = true
+    if (!showPool || !pool || !isInitialRangeResolved) {
       return
     }
     if (allocateDebounceRef.current) {
@@ -2677,7 +2676,7 @@ function PoolDetailPage() {
         clearTimeout(allocateDebounceRef.current)
       }
     }
-  }, [depositUsd, rangeMin, rangeMax, fetchAllocate, pool, showPool])
+  }, [depositUsd, rangeMin, rangeMax, fetchAllocate, isInitialRangeResolved, pool, showPool])
 
   useEffect(() => {
     if (!showPool || !pool) {

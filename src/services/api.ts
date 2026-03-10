@@ -3,7 +3,11 @@ const REFRESH_ENDPOINT = '/v1/auth/refresh'
 let accessToken: string | null = null
 let onUnauthorizedHandler: (() => void) | null = null
 let hasTriggeredUnauthorized = false
-let refreshRequest: Promise<string | null> | null = null
+type RefreshSessionPayload = {
+  access_token?: unknown
+  [key: string]: unknown
+}
+let refreshRequest: Promise<RefreshSessionPayload | null> | null = null
 
 export const setAccessToken = (token: string | null) => {
   accessToken = token
@@ -63,7 +67,19 @@ const isAbortError = (error: unknown) => {
   return candidate.name === 'AbortError'
 }
 
-const refreshAccessToken = async (): Promise<string | null> => {
+const readAccessTokenFromRefreshPayload = (payload: RefreshSessionPayload | null) => {
+  if (!payload) {
+    return null
+  }
+  const candidate = payload.access_token
+  if (typeof candidate !== 'string') {
+    return null
+  }
+  const normalized = candidate.trim()
+  return normalized || null
+}
+
+const requestRefreshSession = async (): Promise<RefreshSessionPayload | null> => {
   if (refreshRequest) {
     return refreshRequest
   }
@@ -81,16 +97,13 @@ const refreshAccessToken = async (): Promise<string | null> => {
         return null
       }
 
-      const payload = await parseResponseBody<{ access_token?: unknown }>(response)
-      const token =
-        typeof payload?.access_token === 'string' && payload.access_token.trim()
-          ? payload.access_token.trim()
-          : null
+      const payload = await parseResponseBody<RefreshSessionPayload>(response)
+      const token = readAccessTokenFromRefreshPayload(payload)
       if (!token) {
         return null
       }
       accessToken = token
-      return token
+      return payload
     } catch {
       return null
     } finally {
@@ -99,6 +112,16 @@ const refreshAccessToken = async (): Promise<string | null> => {
   })()
 
   return refreshRequest
+}
+
+const refreshAccessToken = async (): Promise<string | null> => {
+  const refreshed = await requestRefreshSession()
+  const token = readAccessTokenFromRefreshPayload(refreshed)
+  if (!token) {
+    return null
+  }
+  accessToken = token
+  return token
 }
 
 export async function fetchJson<T>(path: string, options: FetchOptions = {}): Promise<T> {
@@ -110,6 +133,16 @@ export async function fetchJson<T>(path: string, options: FetchOptions = {}): Pr
     authenticated = true,
     retryAfterRefresh = false,
   } = options
+
+  const isDirectRefreshRequest = path === REFRESH_ENDPOINT && method === 'POST' && !authenticated
+  if (isDirectRefreshRequest) {
+    const refreshed = await requestRefreshSession()
+    if (!refreshed) {
+      throw new Error('Unable to refresh session.')
+    }
+    return refreshed as T
+  }
+
   const headers: Record<string, string> = {
     ...(customHeaders ?? {}),
   }
