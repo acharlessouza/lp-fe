@@ -3,17 +3,6 @@ import { Link } from 'react-router-dom'
 import { useMarketSummary } from '../hooks/useMarketSummary'
 import './HomePage.css'
 
-const TICKER_ITEMS = [
-  { pair: 'ETH/USDC', delta: '▲ 2.34%', trend: 'up' },
-  { pair: 'WBTC/ETH', delta: '▼ 0.78%', trend: 'down' },
-  { pair: 'USDT/USDC', delta: '▲ 0.01%', trend: 'up' },
-  { pair: 'ARB/ETH', delta: '▲ 5.12%', trend: 'up' },
-  { pair: 'OP/USDC', delta: '▼ 1.44%', trend: 'down' },
-  { pair: 'LINK/ETH', delta: '▲ 3.20%', trend: 'up' },
-  { pair: 'UNI/USDC', delta: '▲ 1.87%', trend: 'up' },
-  { pair: 'MATIC/USDC', delta: '▲ 4.55%', trend: 'up' },
-]
-
 const MARKET_SUMMARY_ITEMS = [
   { key: 'defiMarketCap', title: 'DeFi Market Cap' },
   { key: 'dexVolume24h', title: 'DEX Volume (24h)' },
@@ -101,19 +90,6 @@ function HomePage() {
 
   return (
     <section className="home-page">
-      <div className="home-ticker" aria-hidden="true">
-        <div className="home-ticker-inner">
-          {[...TICKER_ITEMS, ...TICKER_ITEMS].map((item, index) => (
-            <span className="home-tick-item" key={`${item.pair}-${index}`}>
-              {item.pair}{' '}
-              <span className={item.trend === 'up' ? 'home-tick-up' : 'home-tick-down'}>
-                {item.delta}
-              </span>
-            </span>
-          ))}
-        </div>
-      </div>
-
       <div className="home-hero">
         <div className="home-hero-beam" />
         <div className="home-hero-beam2" />
