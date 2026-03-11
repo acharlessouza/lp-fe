@@ -1,0 +1,16 @@
+.admin-plan-create-page__shell {
+  display: grid;
+  gap: 16px;
+}
+
+.admin-plan-create-page__back {
+  display: inline-flex;
+  margin-bottom: 12px;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.admin-plan-create-page__back:hover {
+  color: var(--accent2);
+}

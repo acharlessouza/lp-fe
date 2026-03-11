@@ -8,8 +8,10 @@ import { setAccessToken, setOnUnauthorized } from '../services/api'
 type AuthContextValue = {
   user: User | null
   accessToken: string | null
+  adminPermissions: string[]
   isLoading: boolean
   isAuthenticated: boolean
+  hasAdminPermission: (permission: string) => boolean
   signIn: (email: string, password: string) => Promise<void>
   signInWithGoogle: (idToken: string) => Promise<void>
   signUp: (name: string, email: string, password: string) => Promise<void>
@@ -19,11 +21,19 @@ type AuthContextValue = {
 type AuthStorage = {
   accessToken: string
   user: User | null
+  adminPermissions: string[]
 }
 
 const AUTH_STORAGE_KEY = 'pool_atlas_auth'
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
+
+const parseStoredAdminPermissions = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+}
 
 const parseStoredUser = (value: unknown): User | null => {
   if (!value || typeof value !== 'object') {
@@ -68,9 +78,11 @@ const readStoredAuth = (): AuthStorage | null => {
     }
 
     const userValue = (parsed as { user?: unknown }).user
+    const adminPermissionsValue = (parsed as { adminPermissions?: unknown }).adminPermissions
     return {
       accessToken: accessTokenValue.trim(),
       user: parseStoredUser(userValue),
+      adminPermissions: parseStoredAdminPermissions(adminPermissionsValue),
     }
   } catch {
     return null
@@ -93,21 +105,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const location = useLocation()
   const [user, setUser] = useState<User | null>(null)
   const [accessTokenState, setAccessTokenState] = useState<string | null>(null)
+  const [adminPermissions, setAdminPermissions] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
-  const setAuthState = useCallback((token: string | null, nextUser: User | null) => {
-    setAccessTokenState(token)
-    setUser(nextUser)
-    setAccessToken(token)
-    if (!token) {
-      persistAuth(null)
-      return
-    }
-    persistAuth({
-      accessToken: token,
-      user: nextUser,
-    })
-  }, [])
+  const setAuthState = useCallback(
+    (token: string | null, nextUser: User | null, nextAdminPermissions: string[] = []) => {
+      setAccessTokenState(token)
+      setUser(nextUser)
+      setAdminPermissions(nextAdminPermissions)
+      setAccessToken(token)
+      if (!token) {
+        persistAuth(null)
+        return
+      }
+      persistAuth({
+        accessToken: token,
+        user: nextUser,
+        adminPermissions: nextAdminPermissions,
+      })
+    },
+    [],
+  )
+
+  const hydrateAdminContext = useCallback(
+    async (token: string, fallbackUser: User | null, fallbackAdminPermissions: string[] = []) => {
+      setAccessToken(token)
+
+      try {
+        const me = await getMe()
+        return {
+          user: {
+            id: me.user.id,
+            name: me.user.name,
+            email: me.user.email,
+            email_verified: fallbackUser?.email_verified ?? true,
+            is_active: fallbackUser?.is_active ?? true,
+          },
+          adminPermissions: me.admin_permissions,
+        }
+      } catch {
+        return {
+          user: fallbackUser,
+          adminPermissions: fallbackAdminPermissions,
+        }
+      }
+    },
+    [],
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -117,6 +161,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (stored) {
         setAccessTokenState(stored.accessToken)
         setUser(stored.user)
+        setAdminPermissions(stored.adminPermissions)
         setAccessToken(stored.accessToken)
       } else {
         setAccessToken(null)
@@ -127,30 +172,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (cancelled) {
           return
         }
-        let resolvedUser = refreshed.user ?? stored?.user ?? null
-
-        if (!resolvedUser?.name?.trim()) {
-          try {
-            const me = await getMe()
-            if (cancelled) {
-              return
-            }
-            resolvedUser = {
-              id: me.user.id,
-              name: me.user.name,
-              email: me.user.email,
-              email_verified: stored?.user?.email_verified ?? true,
-              is_active: stored?.user?.is_active ?? true,
-            }
-          } catch {
-            resolvedUser = refreshed.user ?? stored?.user ?? null
-          }
+        const hydrated = await hydrateAdminContext(
+          refreshed.access_token,
+          refreshed.user ?? stored?.user ?? null,
+          stored?.adminPermissions ?? [],
+        )
+        if (cancelled) {
+          return
         }
-
-        setAuthState(refreshed.access_token, resolvedUser)
+        setAuthState(refreshed.access_token, hydrated.user, hydrated.adminPermissions)
       } catch {
         if (!cancelled) {
-          setAuthState(null, null)
+          setAuthState(null, null, [])
         }
       } finally {
         if (!cancelled) {
@@ -164,11 +197,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [setAuthState])
+  }, [hydrateAdminContext, setAuthState])
 
   useEffect(() => {
     const handleUnauthorized = () => {
-      setAuthState(null, null)
+      setAuthState(null, null, [])
       const currentPath = `${location.pathname}${location.search}`
       navigate('/', {
         replace: true,
@@ -187,17 +220,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(
     async (email: string, password: string) => {
       const result = await login(email, password)
-      setAuthState(result.access_token, result.user)
+      const hydrated = await hydrateAdminContext(result.access_token, result.user)
+      setAuthState(result.access_token, hydrated.user, hydrated.adminPermissions)
     },
-    [setAuthState],
+    [hydrateAdminContext, setAuthState],
   )
 
   const signInWithGoogle = useCallback(
     async (idToken: string) => {
       const result = await loginWithGoogle(idToken)
-      setAuthState(result.access_token, result.user)
+      const hydrated = await hydrateAdminContext(result.access_token, result.user)
+      setAuthState(result.access_token, hydrated.user, hydrated.adminPermissions)
     },
-    [setAuthState],
+    [hydrateAdminContext, setAuthState],
   )
 
   const signUp = useCallback(
@@ -214,7 +249,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // local sign-out must always proceed even when backend logout fails
     } finally {
-      setAuthState(null, null)
+      setAuthState(null, null, [])
     }
   }, [setAuthState])
 
@@ -222,14 +257,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       accessToken: accessTokenState,
+      adminPermissions,
       isLoading,
       isAuthenticated: Boolean(accessTokenState),
+      hasAdminPermission: (permission: string) => adminPermissions.includes(permission),
       signIn,
       signInWithGoogle,
       signUp,
       signOut,
     }),
-    [accessTokenState, isLoading, signIn, signInWithGoogle, signOut, signUp, user],
+    [accessTokenState, adminPermissions, isLoading, signIn, signInWithGoogle, signOut, signUp, user],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

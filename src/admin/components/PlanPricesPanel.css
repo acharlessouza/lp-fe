@@ -1,0 +1,9 @@
+.admin-prices {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.admin-prices__help {
+  margin-top: -4px;
+}

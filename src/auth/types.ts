@@ -35,4 +35,5 @@ export type MeResponse = {
   plan_code: string
   features: Record<string, boolean>
   limits: Record<string, number>
+  admin_permissions: string[]
 }

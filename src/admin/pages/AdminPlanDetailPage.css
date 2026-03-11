@@ -1,0 +1,37 @@
+.admin-plan-detail-page__shell {
+  display: grid;
+  gap: 16px;
+}
+
+.admin-plan-detail-page__back {
+  display: inline-flex;
+  margin-bottom: 12px;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.admin-plan-detail-page__back:hover {
+  color: var(--accent2);
+}
+
+.admin-plan-detail-page__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.admin-plan-detail-page__external-id {
+  margin-bottom: 14px;
+}
+
+.admin-plan-detail-page__readonly-line {
+  display: flex;
+  align-items: center;
+  min-height: 42px;
+}
+
+.admin-plan-detail-page__readonly-line.is-empty {
+  color: var(--text3);
+}

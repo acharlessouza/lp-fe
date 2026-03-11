@@ -5,6 +5,11 @@ import { forgotPassword } from './auth/authApi'
 import { ProtectedRoute } from './auth/ProtectedRoute'
 import { useAuth } from './auth/AuthContext'
 import { requestIdToken } from './auth/google'
+import { RequirePermission } from './admin/components/RequirePermission'
+import { ADMIN_BILLING_CATALOG_READ, ADMIN_BILLING_CATALOG_WRITE } from './admin/permissions'
+import AdminPlanCreatePage from './admin/pages/AdminPlanCreatePage'
+import AdminPlanDetailPage from './admin/pages/AdminPlanDetailPage'
+import AdminPlansPage from './admin/pages/AdminPlansPage'
 import DiscoverPage from './pages/DiscoverPage'
 import HomePage from './pages/HomePage'
 import PoolDetailPage from './pages/PoolDetailPage'
@@ -265,11 +270,14 @@ const applyTheme = (theme: ThemeOption) => {
 function App() {
   const location = useLocation()
   const navigate = useNavigate()
-  const { user, isAuthenticated, signIn, signInWithGoogle, signOut, signUp } = useAuth()
+  const { user, hasAdminPermission, isAuthenticated, signIn, signInWithGoogle, signOut, signUp } =
+    useAuth()
   const isHomeRoute = location.pathname === '/'
   const isPricingRoute = location.pathname.startsWith('/pricing')
   const isRadarRoute = location.pathname.startsWith('/radar')
   const isSimulateRoute = location.pathname.startsWith('/simulate')
+  const isAdminRoute = location.pathname.startsWith('/admin')
+  const canAccessAdmin = hasAdminPermission(ADMIN_BILLING_CATALOG_READ)
   const [isThemePickerOpen, setIsThemePickerOpen] = useState(false)
   const [authModal, setAuthModal] = useState<AuthModalType>(null)
   const [authRedirectPath, setAuthRedirectPath] = useState<string | null>(null)
@@ -591,6 +599,11 @@ function App() {
           <Link className={`nl${isPricingRoute ? ' active' : ''}`} to="/pricing">
             Pricing
           </Link>
+          {canAccessAdmin ? (
+            <Link className={`nl${isAdminRoute ? ' active' : ''}`} to="/admin/billing/plans">
+              Admin
+            </Link>
+          ) : null}
         </nav>
 
         <div className="nav-r">
@@ -680,6 +693,38 @@ function App() {
             }
           />
           <Route path="/discover" element={<Navigate to="/radar" replace />} />
+          <Route
+            path="/admin"
+            element={
+              <RequirePermission permission={ADMIN_BILLING_CATALOG_READ}>
+                <Navigate to="/admin/billing/plans" replace />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/admin/billing/plans"
+            element={
+              <RequirePermission permission={ADMIN_BILLING_CATALOG_READ}>
+                <AdminPlansPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/admin/billing/plans/new"
+            element={
+              <RequirePermission permission={ADMIN_BILLING_CATALOG_WRITE}>
+                <AdminPlanCreatePage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/admin/billing/plans/:planId"
+            element={
+              <RequirePermission permission={ADMIN_BILLING_CATALOG_READ}>
+                <AdminPlanDetailPage />
+              </RequirePermission>
+            }
+          />
           <Route
             path="/simulate"
             element={

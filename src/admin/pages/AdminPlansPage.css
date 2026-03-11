@@ -1,0 +1,19 @@
+.admin-plans-page__filters {
+  margin-bottom: 16px;
+}
+
+.admin-plans-page__filter-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) repeat(2, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.admin-plans-page__select {
+  appearance: none;
+}
+
+@media (max-width: 860px) {
+  .admin-plans-page__filter-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

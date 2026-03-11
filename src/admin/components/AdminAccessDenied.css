@@ -1,0 +1,54 @@
+.admin-access-denied {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 32px 24px 60px;
+}
+
+.admin-access-denied__card {
+  max-width: 540px;
+  margin: 48px auto 0;
+  padding: 28px;
+  border-radius: var(--rl);
+  border: 1px solid rgba(217, 54, 62, 0.18);
+  background: linear-gradient(180deg, rgba(217, 54, 62, 0.04), transparent 45%), var(--bg2);
+}
+
+.admin-access-denied__eyebrow {
+  display: inline-flex;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(217, 54, 62, 0.22);
+  background: rgba(217, 54, 62, 0.08);
+  color: var(--red);
+  font-size: 11px;
+  font-family: var(--fmono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.admin-access-denied__card h1 {
+  margin: 16px 0 8px;
+  color: var(--text);
+  font-family: var(--fhead);
+  font-size: 28px;
+  line-height: 1.1;
+}
+
+.admin-access-denied__card p {
+  margin: 0;
+  color: var(--text2);
+  font-size: 14px;
+}
+
+.admin-access-denied__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+}
+
+@media (max-width: 720px) {
+  .admin-access-denied {
+    padding: 20px 16px 44px;
+  }
+}
