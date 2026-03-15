@@ -1010,9 +1010,6 @@ function SimulatePage() {
             <button type="button" className="simulate-tab is-active" role="tab" aria-selected="true">
               Liquidity Pools
             </button>
-            <button type="button" className="simulate-tab" disabled aria-disabled="true">
-              Options <span className="soon-badge">soon</span>
-            </button>
           </div>
           <div className="simulate-view-toggle" role="tablist" aria-label="Simulation mode">
             <button
@@ -1021,9 +1018,6 @@ function SimulatePage() {
               onClick={() => setMode('pair')}
             >
               Pair
-            </button>
-            <button type="button" className="simulate-view-btn" disabled aria-disabled="true">
-              Build
             </button>
           </div>
         </div>

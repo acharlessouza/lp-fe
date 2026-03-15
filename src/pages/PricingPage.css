@@ -80,6 +80,40 @@
   font-size: 11px;
 }
 
+.pricing-feedback,
+.pricing-state {
+  max-width: 880px;
+  margin: 0 auto 18px;
+  padding: 12px 14px;
+  border-radius: var(--r);
+  font-size: 13px;
+  text-align: left;
+}
+
+.pricing-feedback {
+  border: 1px solid rgba(217, 54, 62, 0.22);
+  background: rgba(217, 54, 62, 0.08);
+  color: var(--red);
+}
+
+.pricing-state {
+  border: 1px solid var(--border);
+  background: var(--bg2);
+  color: var(--text2);
+}
+
+.pricing-state-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pricing-state p {
+  margin: 0;
+}
+
 .price-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -131,11 +165,12 @@
 .price-amount {
   font-family: var(--fhead);
   font-weight: 800;
-  font-size: 40px;
+  font-size: 34px;
   color: var(--text);
   letter-spacing: -0.03em;
   margin: 10px 0 2px;
   line-height: 1.05;
+  overflow-wrap: anywhere;
 }
 
 .price-amount sup {
@@ -157,6 +192,10 @@
 
 .price-action-btn {
   margin-top: 12px;
+}
+
+.price-action-btn:disabled {
+  opacity: 0.65;
 }
 
 .price-feats {
@@ -245,5 +284,9 @@
 
   .pricing-head h1 {
     font-size: 30px;
+  }
+
+  .pricing-state-error {
+    align-items: flex-start;
   }
 }

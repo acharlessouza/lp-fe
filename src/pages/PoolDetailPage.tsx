@@ -7,7 +7,7 @@ import type {
   PoolDetail,
   PoolPriceResponse,
   SimulateAprResponse,
-  SimulateAprV2Payload,
+  SimulateAprV1Payload,
 } from '../services/api'
 import {
   favoritePool,
@@ -40,7 +40,7 @@ type CalculationMethod =
   | 'peak_liquidity_in_range'
   | 'custom'
 
-const DEFAULT_CALCULATION_METHOD: CalculationMethod = 'avg_liquidity_in_range'
+const DEFAULT_CALCULATION_METHOD: CalculationMethod = 'current'
 
 type LiquidityChartProps = {
   apiData: LiquidityDistributionResponse | null
@@ -227,6 +227,8 @@ const toAprPayloadPrice = (value: string | number) => {
   const normalized = Number(parsed.toPrecision(15))
   return Number.isFinite(normalized) && normalized > 0 ? normalized : null
 }
+
+const toAprHorizon = (days: number) => (days <= 1 ? '24h' : `${days}d`)
 
 const formatChartPrice = (value: number) => {
   if (!Number.isFinite(value)) {
@@ -2103,8 +2105,6 @@ function PoolDetailPage() {
   const latestTimeframeRef = useRef(timeframeDays)
   const latestCalculationMethodRef = useRef<CalculationMethod>(calculationMethod)
   const latestCustomCalculationPriceRef = useRef(customCalculationPrice)
-  const latestAllocateDataRef = useRef<AllocateResponse | null>(allocateData)
-  const allocateResultKeyRef = useRef<string | null>(null)
   const lastAprKeyRef = useRef<string | null>(null)
   const lastRecentViewKeyRef = useRef<string | null>(null)
   const snapshotDateRef = useRef(new Date().toISOString().slice(0, 10))
@@ -2320,12 +2320,8 @@ function PoolDetailPage() {
       return
     }
 
-    const requestKey = `${normalizedPoolAddress}|${chainId}|${exchangeId}|${amountValue}|${parsedMin}|${parsedMax}|${isFullRange}|${isPairInverted}`
-
     setAllocateLoading(true)
     setAllocateError('')
-    // mark as not ready for APR until this allocation completes
-    allocateResultKeyRef.current = null
 
     try {
       const payload = {
@@ -2340,12 +2336,10 @@ function PoolDetailPage() {
       }
       const data = await postAllocate(payload)
       setAllocateData(data)
-      allocateResultKeyRef.current = requestKey
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load allocation.'
       setAllocateError(message)
       setAllocateData(null)
-      allocateResultKeyRef.current = null
     } finally {
       setAllocateLoading(false)
     }
@@ -2510,10 +2504,6 @@ function PoolDetailPage() {
     }
   }, [authLoading, chainId, exchangeId, hasContext, isAuthenticated, normalizedPoolAddress])
 
-  useEffect(() => {
-    latestAllocateDataRef.current = allocateData
-  }, [allocateData])
-
   const fetchSimulateApr = useCallback(async () => {
     if (!normalizedPoolAddress || !Number.isFinite(chainId) || !Number.isFinite(exchangeId)) {
       return
@@ -2524,32 +2514,47 @@ function PoolDetailPage() {
     const daysValue = latestTimeframeRef.current
     const selectedCalculationMethod = latestCalculationMethodRef.current
     const customPriceValueRaw = latestCustomCalculationPriceRef.current
-    const alloc = latestAllocateDataRef.current
 
     const parsedDays = Math.max(1, Math.round(daysValue))
+    const horizon = toAprHorizon(parsedDays)
     const parsedDeposit = Number(depositValue)
     const hasDeposit = Number.isFinite(parsedDeposit) && parsedDeposit > 0
-
-    const { parsedMin, parsedMax } = resolveRequestRange(minValue, maxValue, isFullRange)
-    const hasPriceRange = Number.isFinite(parsedMin) && Number.isFinite(parsedMax)
-
-    if (!isFullRange && !hasPriceRange) {
+    if (!hasDeposit) {
+      setSimulateAprData(null)
+      setSimulateAprError('')
+      lastAprKeyRef.current = null
       return
     }
 
     let minPrice: number | null = null
     let maxPrice: number | null = null
+    let requestRangeKey = 'full-range'
     if (!isFullRange) {
+      const { parsedMin, parsedMax } = resolveRequestRange(minValue, maxValue, false)
+      const hasPriceRange = Number.isFinite(parsedMin) && Number.isFinite(parsedMax)
+      if (!hasPriceRange) {
+        setSimulateAprData(null)
+        setSimulateAprError('')
+        lastAprKeyRef.current = null
+        return
+      }
       const payloadMin = toAprPayloadPrice(parsedMin)
       const payloadMax = toAprPayloadPrice(parsedMax)
       if (payloadMin === null || payloadMax === null) {
+        setSimulateAprData(null)
+        setSimulateAprError('')
+        lastAprKeyRef.current = null
         return
       }
       minPrice = Math.min(payloadMin, payloadMax)
       maxPrice = Math.max(payloadMin, payloadMax)
       if (!(maxPrice > minPrice)) {
+        setSimulateAprData(null)
+        setSimulateAprError('')
+        lastAprKeyRef.current = null
         return
       }
+      requestRangeKey = `${minPrice}|${maxPrice}`
     }
 
     let customCalculationPriceValue: number | null = null
@@ -2567,64 +2572,54 @@ function PoolDetailPage() {
       customCalculationPriceValue = parsedCustomCalculationPrice
     }
 
-    // Only run APR when the allocation result matches the current inputs.
-    const requestKey = `${normalizedPoolAddress}|${chainId}|${exchangeId}|${depositValue}|${parsedMin}|${parsedMax}|${isFullRange}|${isPairInverted}`
-    if (allocateResultKeyRef.current !== requestKey) {
-      return
-    }
-
-    const amountToken0 = getSafeNumber(alloc?.amount_token0)
-    const amountToken1 = getSafeNumber(alloc?.amount_token1)
-    const hasAllocateAmounts = Number.isFinite(amountToken0) && Number.isFinite(amountToken1)
-    if (!hasAllocateAmounts) {
-      return
-    }
-
-    const aprKey = `${requestKey}|v2|${parsedDays}|${amountToken0}|${amountToken1}|${selectedCalculationMethod}|${customCalculationPriceValue ?? ''}`
+    const requestKey = `${normalizedPoolAddress}|${chainId}|${exchangeId}|${depositValue}|${requestRangeKey}|${isFullRange}|${isPairInverted}`
+    const aprKey = `${requestKey}|v1|${horizon}|${parsedDays}|${selectedCalculationMethod}|${customCalculationPriceValue ?? ''}`
     if (lastAprKeyRef.current === aprKey) {
       return
     }
     lastAprKeyRef.current = aprKey
 
-    const basePayload = {
+    const basePayload: SimulateAprV1Payload = {
       pool_address: normalizedPoolAddress,
       chain_id: chainId,
       dex_id: exchangeId,
-      swapped_pair: isPairInverted,
-      ...(hasDeposit ? { deposit_usd: String(parsedDeposit) } : {}),
-      amount_token0: String(amountToken0),
-      amount_token1: String(amountToken1),
+      ...(isPairInverted ? { swapped_pair: true } : {}),
+      deposit_usd: String(parsedDeposit),
+      amount_token0: null,
+      amount_token1: null,
+      full_range: isFullRange,
+      horizon,
+      mode: isFullRange ? 'A' : 'B',
+      lookback_days: parsedDays,
+      calculation_method: selectedCalculationMethod,
+      custom_calculation_price:
+        selectedCalculationMethod === 'custom' ? customCalculationPriceValue : null,
     }
 
     setSimulateAprLoading(true)
     setSimulateAprError('')
     try {
-      const sharedPayload = {
+      const payload: SimulateAprV1Payload = {
         ...basePayload,
-        // For full-range positions, backend expects min/max prices as null.
-        min_price: minPrice,
-        max_price: maxPrice,
-        full_range: isFullRange,
-        lookback_days: parsedDays,
-        calculation_method: selectedCalculationMethod,
+        ...(isFullRange
+          ? {}
+          : {
+              min_price: String(minPrice),
+              max_price: String(maxPrice),
+            }),
       }
       if (import.meta.env.DEV) {
-        console.debug('[apr-v2] payload range', {
+        console.debug('[apr-v1] payload range', {
           display_min: minValue,
           display_max: maxValue,
           min_price: minPrice,
           max_price: maxPrice,
+          horizon,
+          mode: payload.mode,
           swapped_pair: isPairInverted,
         })
       }
-      const data = await postSimulateApr(
-        {
-          ...sharedPayload,
-          custom_calculation_price:
-            selectedCalculationMethod === 'custom' ? customCalculationPriceValue : null,
-        } as SimulateAprV2Payload,
-        { version: 'v2' },
-      )
+      const data = await postSimulateApr(payload, { version: 'v1' })
       setSimulateAprData(data)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to simulate APR.'
@@ -2782,7 +2777,6 @@ function PoolDetailPage() {
       }
     }
   }, [
-    allocateData,
     depositUsd,
     rangeMin,
     rangeMax,

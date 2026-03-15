@@ -1,7 +1,17 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { useAuth } from '../auth/AuthContext'
+import {
+  createCheckoutSession,
+  getPricingPlans,
+  type PricingPlan,
+  type PricingPlanFeature,
+  type PricingPlanPrice,
+} from '../services/api'
 import './PricingPage.css'
 
 type BillingMode = 'monthly' | 'annual'
+type LoadStatus = 'loading' | 'success' | 'error'
 
 const FAQ_ITEMS = [
   {
@@ -19,14 +29,147 @@ const FAQ_ITEMS = [
   },
 ]
 
+const formatPrice = (price: PricingPlanPrice) => {
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: price.currency.toUpperCase(),
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }).format(price.amount_cents / 100)
+  } catch {
+    return `${(price.amount_cents / 100).toFixed(2)} ${price.currency.toUpperCase()}`
+  }
+}
+
+const formatLimitValue = (value: number) => new Intl.NumberFormat('en-US').format(value)
+
+const getFeatureLabel = (feature: PricingPlanFeature) => {
+  const baseLabel = feature.description?.trim() || feature.name.trim() || feature.code.replace(/_/g, ' ')
+
+  if (feature.type === 'limit' && feature.is_enabled && feature.limit_value !== null) {
+    return `${baseLabel}: ${formatLimitValue(feature.limit_value)}`
+  }
+
+  return baseLabel
+}
+
+const hasPaidPrice = (plan: PricingPlan) =>
+  [plan.monthly_price, plan.yearly_price].some((price) => (price?.amount_cents ?? 0) > 0)
+
+const isFreePlan = (plan: PricingPlan) =>
+  plan.code === 'free' || [plan.monthly_price, plan.yearly_price].some((price) => price?.amount_cents === 0)
+
+const getSelectedPrice = (plan: PricingPlan, billingMode: BillingMode) =>
+  billingMode === 'monthly' ? plan.monthly_price : plan.yearly_price
+
+const getFallbackPrice = (plan: PricingPlan, billingMode: BillingMode) =>
+  billingMode === 'monthly' ? plan.yearly_price : plan.monthly_price
+
+const getPopularPlanId = (plans: PricingPlan[]) => {
+  const proPlan = plans.find((plan) => plan.code === 'pro')
+  if (proPlan) {
+    return proPlan.id
+  }
+
+  // Highlight the first paid plan when the backend does not provide an explicit flag.
+  return plans.find((plan) => hasPaidPrice(plan))?.id ?? null
+}
+
 function PricingPage() {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const { isAuthenticated } = useAuth()
   const [billingMode, setBillingMode] = useState<BillingMode>('monthly')
+  const [plans, setPlans] = useState<PricingPlan[]>([])
+  const [status, setStatus] = useState<LoadStatus>('loading')
+  const [error, setError] = useState('')
+  const [checkoutError, setCheckoutError] = useState('')
+  const [pendingPlanId, setPendingPlanId] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
+
   const isMonthly = billingMode === 'monthly'
 
-  const proPrice = isMonthly ? 29 : 23
-  const proPeriod = isMonthly ? 'per month · billed monthly' : 'per month · billed annually'
-  const teamPrice = isMonthly ? 79 : 63
-  const teamPeriod = isMonthly ? 'per month · up to 5 seats' : 'per month · billed annually'
+  useEffect(() => {
+    const controller = new AbortController()
+
+    const loadPlans = async () => {
+      setStatus('loading')
+      setError('')
+
+      try {
+        const response = await getPricingPlans(controller.signal)
+        setPlans([...response.plans].sort((left, right) => left.sort_order - right.sort_order))
+        setStatus('success')
+      } catch (loadError) {
+        if (loadError instanceof DOMException && loadError.name === 'AbortError') {
+          return
+        }
+        setError(loadError instanceof Error ? loadError.message : 'Unable to load pricing plans.')
+        setStatus('error')
+      }
+    }
+
+    void loadPlans()
+
+    return () => controller.abort()
+  }, [reloadKey])
+
+  const popularPlanId = useMemo(() => getPopularPlanId(plans), [plans])
+
+  const openAuthFlow = (mode: 'login' | 'signup') => {
+    const from = `${location.pathname}${location.search}`
+    navigate(
+      {
+        pathname: location.pathname,
+        search: location.search,
+      },
+      {
+        state: {
+          openAuth: mode,
+          from,
+        },
+      },
+    )
+  }
+
+  const handlePlanAction = async (plan: PricingPlan) => {
+    setCheckoutError('')
+
+    const selectedPrice = getSelectedPrice(plan, billingMode)
+    const freePlan = isFreePlan(plan)
+
+    if (freePlan) {
+      if (isAuthenticated) {
+        navigate('/simulate')
+        return
+      }
+      openAuthFlow('signup')
+      return
+    }
+
+    if (!selectedPrice) {
+      return
+    }
+
+    if (!isAuthenticated) {
+      openAuthFlow('login')
+      return
+    }
+
+    setPendingPlanId(plan.id)
+    try {
+      const response = await createCheckoutSession(selectedPrice.id)
+      window.location.assign(response.checkout_url)
+    } catch (checkoutRequestError) {
+      setCheckoutError(
+        checkoutRequestError instanceof Error
+          ? checkoutRequestError.message
+          : 'Unable to start checkout.',
+      )
+      setPendingPlanId(null)
+    }
+  }
 
   return (
     <section className="pricing-page">
@@ -52,83 +195,101 @@ function PricingPage() {
               onClick={() => setBillingMode('annual')}
               aria-selected={!isMonthly}
             >
-              Annual <span className="pricing-discount">−20%</span>
+              Annual
             </button>
           </div>
         </div>
 
-        <div className="price-grid">
-          <article className="price-card">
-            <div className="price-name">Free</div>
-            <div className="price-amount">
-              <sup>$</sup>0
-            </div>
-            <div className="price-period">forever</div>
-            <p className="price-description">
-              Explore top pools and run basic simulations.
-            </p>
-            <button type="button" className="btn btn-ghost btn-full price-action-btn">
-              Get started
-            </button>
-            <ul className="price-feats">
-              <li>Radar top pools</li>
-              <li>Basic simulation</li>
-              <li>Price range modeling</li>
-              <li>Volume history (7 days)</li>
-              <li className="no">Price volatility data</li>
-              <li className="no">Position breakdown</li>
-              <li className="no">Recently viewed pools</li>
-              <li className="no">Portfolio tracking</li>
-            </ul>
-          </article>
+        {checkoutError ? <div className="pricing-feedback pricing-feedback-error">{checkoutError}</div> : null}
 
-          <article className="price-card feat-p">
-            <div className="price-badge">Most Popular</div>
-            <div className="price-name accent">Pro</div>
-            <div className="price-amount">
-              <sup>$</sup>
-              {proPrice}
-            </div>
-            <div className="price-period">{proPeriod}</div>
-            <p className="price-description">
-              Full access for serious liquidity providers.
-            </p>
-            <button type="button" className="btn btn-cta btn-full price-action-btn">
-              Start 7-day free trial
+        {status === 'loading' ? <div className="pricing-state">Loading pricing plans...</div> : null}
+        {status === 'error' ? (
+          <div className="pricing-state pricing-state-error">
+            <p>{error || 'Pricing is temporarily unavailable.'}</p>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => setReloadKey((current) => current + 1)}
+            >
+              Try again
             </button>
-            <ul className="price-feats">
-              <li>Everything in Free</li>
-              <li>Price volatility data</li>
-              <li>Position breakdown charts</li>
-              <li>Recently viewed pools</li>
-              <li>Extended history (90d)</li>
-              <li>Portfolio tracking</li>
-              <li>CSV export</li>
-              <li>Priority support</li>
-            </ul>
-          </article>
+          </div>
+        ) : null}
+        {status === 'success' && !plans.length ? (
+          <div className="pricing-state">Pricing is currently unavailable.</div>
+        ) : null}
 
-          <article className="price-card">
-            <div className="price-name">Team</div>
-            <div className="price-amount">
-              <sup>$</sup>
-              {teamPrice}
-            </div>
-            <div className="price-period">{teamPeriod}</div>
-            <p className="price-description">For funds and research teams.</p>
-            <button type="button" className="btn btn-outline btn-full price-action-btn">
-              Contact sales
-            </button>
-            <ul className="price-feats">
-              <li>Everything in Pro</li>
-              <li>5 team seats</li>
-              <li>API access</li>
-              <li>Custom alerts and webhooks</li>
-              <li>Dedicated onboarding</li>
-              <li>SLA support</li>
-            </ul>
-          </article>
-        </div>
+        {status === 'success' && plans.length ? (
+          <div className="price-grid">
+            {plans.map((plan) => {
+              const selectedPrice = getSelectedPrice(plan, billingMode)
+              const fallbackPrice = getFallbackPrice(plan, billingMode)
+              const displayPrice = selectedPrice ?? fallbackPrice
+              const freePlan = isFreePlan(plan)
+              const unavailableForSelectedMode = !selectedPrice && !freePlan
+              const isPopular = plan.id === popularPlanId
+
+              let actionLabel = 'Get started'
+              if (freePlan) {
+                actionLabel = isAuthenticated ? 'Go to simulator' : 'Get started'
+              } else if (unavailableForSelectedMode) {
+                actionLabel = `Unavailable for ${billingMode === 'monthly' ? 'monthly' : 'annual'} billing`
+              } else if (pendingPlanId === plan.id) {
+                actionLabel = 'Redirecting...'
+              } else {
+                actionLabel = 'Start checkout'
+              }
+
+              let periodLabel = 'Contact support'
+              if (freePlan) {
+                periodLabel = 'forever'
+              } else if (selectedPrice) {
+                periodLabel =
+                  billingMode === 'monthly'
+                    ? 'per month · billed monthly'
+                    : 'per year · billed annually'
+              } else if (fallbackPrice) {
+                periodLabel =
+                  billingMode === 'monthly'
+                    ? 'Monthly billing unavailable · showing annual price'
+                    : 'Annual billing unavailable · showing monthly price'
+              }
+
+              return (
+                <article className={`price-card${isPopular ? ' feat-p' : ''}`} key={plan.id}>
+                  {isPopular ? <div className="price-badge">Most Popular</div> : null}
+                  <div className={`price-name${isPopular ? ' accent' : ''}`}>{plan.name}</div>
+                  <div className="price-amount">
+                    {displayPrice ? formatPrice(displayPrice) : '—'}
+                  </div>
+                  <div className="price-period">{periodLabel}</div>
+                  <p className="price-description">
+                    {plan.description?.trim() || 'Flexible access to the Pool Atlas workspace.'}
+                  </p>
+                  <button
+                    type="button"
+                    className={`btn btn-full price-action-btn${
+                      freePlan ? ' btn-ghost' : isPopular ? ' btn-cta' : ' btn-outline'
+                    }`}
+                    onClick={() => {
+                      void handlePlanAction(plan)
+                    }}
+                    disabled={pendingPlanId === plan.id || unavailableForSelectedMode}
+                  >
+                    {actionLabel}
+                  </button>
+                  <ul className="price-feats">
+                    {plan.features.map((feature) => (
+                      <li className={feature.is_enabled ? '' : 'no'} key={`${plan.id}-${feature.code}`}>
+                        {getFeatureLabel(feature)}
+                      </li>
+                    ))}
+                  </ul>
+                </article>
+              )
+            })}
+          </div>
+        ) : null}
 
         <section className="pricing-faq">
           <h2>FAQ</h2>

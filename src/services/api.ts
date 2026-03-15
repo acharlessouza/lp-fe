@@ -331,6 +331,42 @@ export type MarketSummaryResponse = {
   }
 }
 
+export type PricingPlanPrice = {
+  id: string
+  interval: 'month' | 'year' | string
+  currency: string
+  amount_cents: number
+}
+
+export type PricingPlanFeature = {
+  code: string
+  name: string
+  description?: string | null
+  type: 'boolean' | 'limit' | string
+  is_enabled: boolean
+  limit_value: number | null
+}
+
+export type PricingPlan = {
+  id: string
+  code: string
+  name: string
+  description?: string | null
+  sort_order: number
+  monthly_price: PricingPlanPrice | null
+  yearly_price: PricingPlanPrice | null
+  features: PricingPlanFeature[]
+}
+
+export type PricingPlansResponse = {
+  plans: PricingPlan[]
+}
+
+export type CreateCheckoutSessionResponse = {
+  checkout_session_id: string
+  checkout_url: string
+}
+
 export type PoolFavoriteResponse = {
   isFavorited: boolean
 }
@@ -571,14 +607,12 @@ export type SimulateAprV1Payload = {
   chain_id: number
   dex_id: number
   swapped_pair?: boolean
-  deposit_usd?: string
-  amount_token0?: string
-  amount_token1?: string
-  tick_lower: number | null
-  tick_upper: number | null
-  min_price: number | null
-  max_price: number | null
+  deposit_usd: string
+  amount_token0: string | null
+  amount_token1: string | null
   full_range: boolean
+  min_price?: string | null
+  max_price?: string | null
   horizon: string
   mode: 'A' | 'B'
   lookback_days: number
@@ -607,6 +641,20 @@ export const getExchanges = (signal?: AbortSignal) =>
 
 export const getMarketSummary = (signal?: AbortSignal) =>
   fetchJson<MarketSummaryResponse>('/v1/market-summary', { signal })
+
+export const getPricingPlans = (signal?: AbortSignal) =>
+  fetchJson<PricingPlansResponse>('/v1/pricing/plans', {
+    signal,
+    authenticated: false,
+  })
+
+export const createCheckoutSession = (planPriceId: string) =>
+  fetchJson<CreateCheckoutSessionResponse>('/v1/billing/checkout-session', {
+    method: 'POST',
+    body: {
+      plan_price_id: planPriceId,
+    },
+  })
 
 export const getNetworks = (exchangeId: number, signal?: AbortSignal) =>
   fetchJson<Network[]>(`/v1/exchanges/${exchangeId}/networks`, { signal })

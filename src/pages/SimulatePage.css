@@ -59,22 +59,6 @@
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
 }
 
-.simulate-tab:disabled {
-  cursor: default;
-}
-
-.soon-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 7px;
-  border-radius: 5px;
-  font-size: 10px;
-  font-weight: 600;
-  background: rgba(255, 149, 0, 0.12);
-  color: var(--orange);
-  margin-left: 4px;
-}
-
 .simulate-view-toggle {
   margin-left: auto;
   display: flex;
@@ -103,11 +87,6 @@
   background: var(--bg2);
   color: var(--text);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
-}
-
-.simulate-view-btn:disabled {
-  cursor: default;
-  color: var(--text3);
 }
 
 .simulate-market-wrap {
